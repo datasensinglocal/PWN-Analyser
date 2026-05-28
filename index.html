@@ -7,7 +7,7 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-body { display: flex; height: 100vh; overflow: hidden; font-family: 'Segoe UI', system-ui, sans-serif; background: #0d0d0d; color: #e2ddd6; }
+body { display: flex; height: 100vh; overflow: hidden; font-family: 'Segoe UI', system-ui, sans-serif; background: #111318; color: #e2ddd6; }
 #sidebar { width: 330px; min-width: 330px; background: #131313; border-right: 1px solid #252525; display: flex; flex-direction: column; overflow: hidden; z-index: 10; }
 #map-panel { flex: 1; position: relative; }
 #map { width: 100%; height: 100%; }
@@ -201,8 +201,8 @@ input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 13p
       </div>
       <div class="section">
         <div class="sec-label">PWN Grade Thresholds</div>
-        <div class="pwn-row"><div class="pwn-swatch" style="background:#c8522a"></div><span class="pwn-name">PWN 1</span><input type="range" style="flex:1" id="p1t" min="5" max="40" value="20" step="1" oninput="document.getElementById('p1v').textContent=this.value+'%'"/><span class="pwn-val" id="p1v">20%</span></div>
-        <div class="pwn-row"><div class="pwn-swatch" style="background:#c89020"></div><span class="pwn-name">PWN 2</span><input type="range" style="flex:1" id="p2t" min="10" max="50" value="30" step="1" oninput="document.getElementById('p2v').textContent=this.value+'%'"/><span class="pwn-val" id="p2v">30%</span></div>
+        <div class="pwn-row"><div class="pwn-swatch" style="background:#FF5733"></div><span class="pwn-name">PWN 1</span><input type="range" style="flex:1" id="p1t" min="5" max="40" value="20" step="1" oninput="document.getElementById('p1v').textContent=this.value+'%'"/><span class="pwn-val" id="p1v">20%</span></div>
+        <div class="pwn-row"><div class="pwn-swatch" style="background:#FFC300"></div><span class="pwn-name">PWN 2</span><input type="range" style="flex:1" id="p2t" min="10" max="50" value="30" step="1" oninput="document.getElementById('p2v').textContent=this.value+'%'"/><span class="pwn-val" id="p2v">30%</span></div>
       </div>
     </div>
 
@@ -210,9 +210,9 @@ input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 13p
     <div id="tab-layers" style="display:none">
       <div class="section">
         <div class="sec-label">PWN Layers</div>
-        <div class="tog-row on" id="tog-pwn1" onclick="togglePWN('pwn1')"><div class="tog-sw" style="background:#c8522a"></div>PWN 1 — Critical</div>
-        <div class="tog-row on" id="tog-pwn2" onclick="togglePWN('pwn2')"><div class="tog-sw" style="background:#c89020"></div>PWN 2 — Important</div>
-        <div class="tog-row on" id="tog-pwn3" onclick="togglePWN('pwn3')"><div class="tog-sw" style="background:#4a8a2a"></div>PWN 3 — Secondary</div>
+        <div class="tog-row on" id="tog-pwn1" onclick="togglePWN('pwn1')"><div class="tog-sw" style="background:#FF5733"></div>PWN 1 — Critical</div>
+        <div class="tog-row on" id="tog-pwn2" onclick="togglePWN('pwn2')"><div class="tog-sw" style="background:#FFC300"></div>PWN 2 — Important</div>
+        <div class="tog-row on" id="tog-pwn3" onclick="togglePWN('pwn3')"><div class="tog-sw" style="background:#58D68D"></div>PWN 3 — Secondary</div>
       </div>
       <div class="section">
         <div class="sec-label">Attractor Layers</div>
@@ -226,9 +226,9 @@ input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 13p
 
   </div>
   <div class="stats-footer" id="stats-footer">
-    <div class="stat"><div class="stat-val" id="s1" style="color:#c8522a">0</div><div class="stat-lbl">PWN 1</div></div>
-    <div class="stat"><div class="stat-val" id="s2" style="color:#c89020">0</div><div class="stat-lbl">PWN 2</div></div>
-    <div class="stat"><div class="stat-val" id="s3" style="color:#4a8a2a">0</div><div class="stat-lbl">PWN 3</div></div>
+    <div class="stat"><div class="stat-val" id="s1" style="color:#FF5733">0</div><div class="stat-lbl">PWN 1</div></div>
+    <div class="stat"><div class="stat-val" id="s2" style="color:#FFC300">0</div><div class="stat-lbl">PWN 2</div></div>
+    <div class="stat"><div class="stat-val" id="s3" style="color:#58D68D">0</div><div class="stat-lbl">PWN 3</div></div>
     <div class="stat"><div class="stat-val" id="st" style="color:#555">0</div><div class="stat-lbl">Segs</div></div>
   </div>
 </div>
@@ -242,9 +242,9 @@ input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 13p
   </div>
   <div class="legend" id="legend">
     <div class="leg-title">PWN Grade</div>
-    <div class="leg-row"><div class="leg-line" style="background:#c8522a"></div>PWN 1 — Critical</div>
-    <div class="leg-row"><div class="leg-line" style="background:#c89020"></div>PWN 2 — Important</div>
-    <div class="leg-row"><div class="leg-line" style="background:#4a8a2a"></div>PWN 3 — Secondary</div>
+    <div class="leg-row"><div class="leg-line" style="background:#FF5733"></div>PWN 1 — Critical</div>
+    <div class="leg-row"><div class="leg-line" style="background:#FFC300"></div>PWN 2 — Important</div>
+    <div class="leg-row"><div class="leg-line" style="background:#58D68D"></div>PWN 3 — Secondary</div>
   </div>
   <div class="boundary-legend" id="boundary-legend">
     <div class="bl-row"><div class="bl-line" style="background:#c84a4a"></div>Study Area</div>
@@ -405,8 +405,13 @@ let editMarkers={ study:[], ctx:[] };
 
 /* ── MAP ── */
 const map = L.map('map', { zoomControl:true, preferCanvas:true }).setView([12.97, 77.59], 12);
-L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-  attribution:'&copy; OpenStreetMap &copy; CARTO', maxZoom:19
+// Dark-matter-lite: dark bg but with visible labels and roads
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png', {
+  attribution:'&copy; OpenStreetMap &copy; CARTO', maxZoom:19, opacity:0.72
+}).addTo(map);
+// Labels layer on top so they're always readable
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png', {
+  attribution:'', maxZoom:19, opacity:1, zIndex:10
 }).addTo(map);
 
 /* ── INTERACTIVE NODE DRAWING ── */
@@ -612,7 +617,7 @@ function loadNetwork(input) {
     t.textContent='✓ '+ct+' features loaded'; t.className='uz-title ok';
     document.getElementById('net-sub').textContent=fname;
     if (netLayer) map.removeLayer(netLayer);
-    netLayer=L.geoJSON(gj,{style:{color:'#2e2e2e',weight:1,opacity:0.9}}).addTo(map);
+    netLayer=L.geoJSON(gj,{style:{color:'#4a4a52',weight:1,opacity:0.85}}).addTo(map);
     try { map.fitBounds(netLayer.getBounds(),{padding:[30,30]}); } catch(ex) {}
     renderCities(); showToast('Network loaded — '+ct+' features');
   });
@@ -1134,22 +1139,23 @@ function closeLoops(segs) {
 
 function renderSegs(segs) {
   if (segLayer) { map.removeLayer(segLayer); segLayer=null; }
-  const cmap={pwn1:'#c8522a',pwn2:'#c89020',pwn3:'#4a8a2a'};
-  const wmap={pwn1:5,pwn2:3.5,pwn3:2};
+  const cmap={pwn1:'#FF5733',pwn2:'#FFC300',pwn3:'#58D68D'};
+  const wmap={pwn1:6,pwn2:4,pwn3:2.5};
+  const CMAP=cmap, WMAP=wmap; // closure for event handlers
   segLayer=L.geoJSON(turf.featureCollection(segs),{
     style:function(f){ const s=segs[f._id], pwn=s?s._pwn:'pwn3';
-      return {color:cmap[pwn]||'#888',weight:wmap[pwn]||2,opacity:pwnVis[pwn]?0.9:0}; },
+      return {color:CMAP[pwn]||'#888',weight:WMAP[pwn]||2,opacity:pwnVis[pwn]?0.9:0}; },
     onEachFeature:function(feature,layer){ const s=segs[feature._id]; if (!s) return;
       layer._pwn=s._pwn;
       layer.on('click',()=>showInfo(s));
-      layer.on('mouseover',()=>{ if(s._pwn==='pwn1') layer.setStyle({weight:7}); });
-      layer.on('mouseout', ()=>{ if(s._pwn==='pwn1') layer.setStyle({weight:5}); }); }
+      layer.on('mouseover',()=>{ layer.setStyle({weight:WMAP[s._pwn]+3,opacity:1}); });
+      layer.on('mouseout', ()=>{ layer.setStyle({weight:WMAP[s._pwn],opacity:0.9}); }); }
   }).addTo(map);
   if (netLayer) map.removeLayer(netLayer);
 }
 
 function showInfo(s) {
-  const pc={pwn1:'#c8522a',pwn2:'#c89020',pwn3:'#4a8a2a'};
+  const pc={pwn1:'#FF5733',pwn2:'#FFC300',pwn3:'#58D68D'};
   const pl={pwn1:'PWN 1 — Critical',pwn2:'PWN 2 — Important',pwn3:'PWN 3 — Secondary'};
   document.getElementById('info-id').textContent='Segment #'+s._id+(s._loop?' · loop-closed':'')+(s._gated?' · isolated':'');
   document.getElementById('info-grade').textContent=pl[s._pwn]||'—';
