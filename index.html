@@ -155,9 +155,9 @@ input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 13p
         <div class="section">
           <div class="sec-label">Street Network</div>
           <div class="upload-zone" id="net-zone">
-            <input type="file" accept=".geojson,.json" onchange="loadNetwork(this)"/>
+            <input type="file" accept=".geojson,.json,.kml" onchange="loadNetwork(this)"/>
             <div class="uz-title" id="net-title">Upload GeoJSON</div>
-            <div class="uz-sub" id="net-sub">LineString or MultiLineString road network</div>
+            <div class="uz-sub" id="net-sub">GeoJSON or KML road network</div>
           </div>
         </div>
         <div class="section">
@@ -277,6 +277,111 @@ input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 13p
 <!-- Scripts loaded at end of body to guarantee DOM + libraries ready -->
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6.5.0/turf.min.js"></script>
+<script>
+/* ── KML → GeoJSON CONVERTER ── */
+function kmlToGeoJSON(kmlText) {
+  const parser = new DOMParser();
+  const kml = parser.parseFromString(kmlText, 'text/xml');
+  const features = [];
+
+  function parseCoordString(str) {
+    return str.trim().split(/\s+/).map(pt => {
+      const parts = pt.split(',');
+      return [parseFloat(parts[0]), parseFloat(parts[1])];
+    }).filter(c => !isNaN(c[0]) && !isNaN(c[1]));
+  }
+
+  function getProps(pm) {
+    const name = pm.querySelector('name');
+    const desc = pm.querySelector('description');
+    return {
+      name: name ? name.textContent.trim() : '',
+      description: desc ? desc.textContent.trim() : ''
+    };
+  }
+
+  // Handle Placemarks
+  const placemarks = kml.querySelectorAll('Placemark');
+  placemarks.forEach(pm => {
+    const props = getProps(pm);
+
+    // Point
+    const point = pm.querySelector('Point coordinates');
+    if (point) {
+      const coords = parseCoordString(point.textContent);
+      if (coords.length > 0) {
+        features.push({ type: 'Feature', properties: props, geometry: { type: 'Point', coordinates: coords[0] } });
+      }
+    }
+
+    // LineString
+    const line = pm.querySelector('LineString coordinates');
+    if (line) {
+      const coords = parseCoordString(line.textContent);
+      if (coords.length >= 2) {
+        features.push({ type: 'Feature', properties: props, geometry: { type: 'LineString', coordinates: coords } });
+      }
+    }
+
+    // MultiLineString via MultiGeometry
+    const multiGeo = pm.querySelector('MultiGeometry');
+    if (multiGeo) {
+      const lineStrings = multiGeo.querySelectorAll('LineString coordinates');
+      if (lineStrings.length > 0) {
+        const allCoords = [];
+        lineStrings.forEach(ls => {
+          const coords = parseCoordString(ls.textContent);
+          if (coords.length >= 2) allCoords.push(coords);
+        });
+        if (allCoords.length > 0) {
+          features.push({ type: 'Feature', properties: props,
+            geometry: { type: 'MultiLineString', coordinates: allCoords } });
+        }
+      }
+      const points = multiGeo.querySelectorAll('Point coordinates');
+      points.forEach(p => {
+        const coords = parseCoordString(p.textContent);
+        if (coords.length > 0) {
+          features.push({ type: 'Feature', properties: props, geometry: { type: 'Point', coordinates: coords[0] } });
+        }
+      });
+    }
+
+    // Polygon
+    const poly = pm.querySelector('Polygon outerBoundaryIs LinearRing coordinates');
+    if (poly) {
+      const coords = parseCoordString(poly.textContent);
+      if (coords.length >= 3) {
+        if (coords[0][0] !== coords[coords.length-1][0] || coords[0][1] !== coords[coords.length-1][1]) {
+          coords.push(coords[0]);
+        }
+        features.push({ type: 'Feature', properties: props, geometry: { type: 'Polygon', coordinates: [coords] } });
+      }
+    }
+  });
+
+  return { type: 'FeatureCollection', features };
+}
+
+function parseFile(file, callback) {
+  const reader = new FileReader();
+  const name = file.name.toLowerCase();
+  reader.onload = function(e) {
+    try {
+      let gj;
+      if (name.endsWith('.kml')) {
+        gj = kmlToGeoJSON(e.target.result);
+      } else {
+        gj = JSON.parse(e.target.result);
+      }
+      callback(null, gj, file.name);
+    } catch(ex) {
+      callback('Error reading file — check it is valid GeoJSON or KML');
+    }
+  };
+  reader.readAsText(file);
+}
+</script>
 <script>
 /* ── STATE ── */
 const ATT_COLORS = ['#378ADD','#c8522a','#4a8a2a','#c89020','#8a4ab0','#c84a8a','#1a9a7a','#888888'];
@@ -400,23 +505,19 @@ function renderCities() {
 /* ── NETWORK ── */
 function loadNetwork(input) {
   const file=input.files[0]; if (!file) return;
-  const r=new FileReader();
-  r.onload=function(e) {
-    try {
-      const gj=JSON.parse(e.target.result);
-      cities[activeCity].network=gj;
-      const ct=gj.features?gj.features.length:0;
-      document.getElementById('net-zone').classList.add('loaded');
-      const t=document.getElementById('net-title');
-      t.textContent='✓ '+ct+' features loaded'; t.className='uz-title ok';
-      document.getElementById('net-sub').textContent=file.name;
-      if (netLayer) map.removeLayer(netLayer);
-      netLayer=L.geoJSON(gj,{style:{color:'#2e2e2e',weight:1,opacity:0.9}}).addTo(map);
-      try { map.fitBounds(netLayer.getBounds(),{padding:[30,30]}); } catch(ex) {}
-      renderCities(); showToast('Network loaded — '+ct+' features');
-    } catch(ex) { showToast('Error: check file is valid GeoJSON'); }
-  };
-  r.readAsText(file);
+  parseFile(file, function(err, gj, fname) {
+    if (err) { showToast(err); return; }
+    cities[activeCity].network=gj;
+    const ct=gj.features?gj.features.length:0;
+    document.getElementById('net-zone').classList.add('loaded');
+    const t=document.getElementById('net-title');
+    t.textContent='✓ '+ct+' features loaded'; t.className='uz-title ok';
+    document.getElementById('net-sub').textContent=fname;
+    if (netLayer) map.removeLayer(netLayer);
+    netLayer=L.geoJSON(gj,{style:{color:'#2e2e2e',weight:1,opacity:0.9}}).addTo(map);
+    try { map.fitBounds(netLayer.getBounds(),{padding:[30,30]}); } catch(ex) {}
+    renderCities(); showToast('Network loaded — '+ct+' features');
+  });
 }
 
 /* ── ATTRACTORS ── */
@@ -433,21 +534,17 @@ function removeAtt(i) {
 }
 function loadAttFile(i,input) {
   const file=input.files[0]; if (!file) return;
-  const r=new FileReader();
-  r.onload=function(e) {
-    try {
-      const gj=JSON.parse(e.target.result);
-      atts[i].data=gj; atts[i].count=gj.features?gj.features.length:0;
-      if (attLayers[i]) map.removeLayer(attLayers[i]);
-      attLayers[i]=L.geoJSON(gj,{
-        pointToLayer:function(f,ll){ return L.circleMarker(ll,{radius:4,fillColor:atts[i].color,color:'#0d0d0d',weight:1,fillOpacity:0.9}); },
-        style:{color:atts[i].color,weight:2}
-      }).addTo(map);
-      attVis[i]=true; renderAtts(); renderAttLayers();
-      showToast(atts[i].name+' loaded — '+atts[i].count+' features');
-    } catch(ex) { showToast('Error: invalid GeoJSON'); }
-  };
-  r.readAsText(file);
+  parseFile(file, function(err, gj, fname) {
+    if (err) { showToast(err); return; }
+    atts[i].data=gj; atts[i].count=gj.features?gj.features.length:0;
+    if (attLayers[i]) map.removeLayer(attLayers[i]);
+    attLayers[i]=L.geoJSON(gj,{
+      pointToLayer:function(f,ll){ return L.circleMarker(ll,{radius:4,fillColor:atts[i].color,color:'#0d0d0d',weight:1,fillOpacity:0.9}); },
+      style:{color:atts[i].color,weight:2}
+    }).addTo(map);
+    attVis[i]=true; renderAtts(); renderAttLayers();
+    showToast(atts[i].name+' loaded — '+atts[i].count+' features');
+  });
 }
 function renderAtts() {
   document.getElementById('att-list').innerHTML = atts.map((a,i) => `
@@ -456,7 +553,7 @@ function renderAtts() {
       <span class="att-name">${a.name}</span>
       ${a.count?`<span class="att-count">${a.count}</span>`:''}
       <label class="att-upload-lbl">${a.data?'Replace':'Upload'}
-        <input type="file" accept=".geojson,.json" onchange="loadAttFile(${i},this)"/>
+        <input type="file" accept=".geojson,.json,.kml" onchange="loadAttFile(${i},this)"/>
       </label>
       <span class="att-rm" onclick="removeAtt(${i})">×</span>
     </div>`).join('');
