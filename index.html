@@ -139,6 +139,11 @@ input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 13p
     <button class="tab-btn" onclick="switchTab('weights')">Weights</button>
     <button class="tab-btn" onclick="switchTab('layers')">Layers</button>
   </div>
+  <!-- Run button always visible -->
+  <div style="padding:10px 16px;border-bottom:1px solid #252525;background:#0d0d0d">
+    <button class="run-btn" onclick="runAnalysis()">Run PWN Analysis</button>
+  </div>
+
   <div class="sb-body">
 
     <!-- DATA TAB -->
@@ -199,7 +204,6 @@ input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 13p
         <div class="pwn-row"><div class="pwn-swatch" style="background:#c8522a"></div><span class="pwn-name">PWN 1</span><input type="range" style="flex:1" id="p1t" min="5" max="40" value="20" step="1" oninput="document.getElementById('p1v').textContent=this.value+'%'"/><span class="pwn-val" id="p1v">20%</span></div>
         <div class="pwn-row"><div class="pwn-swatch" style="background:#c89020"></div><span class="pwn-name">PWN 2</span><input type="range" style="flex:1" id="p2t" min="10" max="50" value="30" step="1" oninput="document.getElementById('p2v').textContent=this.value+'%'"/><span class="pwn-val" id="p2v">30%</span></div>
       </div>
-      <button class="run-btn" onclick="runAnalysis()">Run PWN Analysis</button>
     </div>
 
     <!-- LAYERS TAB -->
@@ -394,9 +398,10 @@ let atts = [
 ];
 let netLayer=null, segLayer=null, attLayers={}, attVis={};
 let bounds={ study:null, ctx:null }, boundLayers={ study:null, ctx:null };
-let drawMode=null, drawPts=[], drawLine=null;
+let drawMode=null, drawPts=[], drawLine=null, drawPolygon=null, drawMarkers=[], drawPreviewLine=null;
 let pwnVis={ pwn1:true, pwn2:true, pwn3:true };
 let baseVis=true, segments=[];
+let editMarkers={ study:[], ctx:[] };
 
 /* ── MAP ── */
 const map = L.map('map', { zoomControl:true, preferCanvas:true }).setView([12.97, 77.59], 12);
@@ -404,63 +409,156 @@ L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
   attribution:'&copy; OpenStreetMap &copy; CARTO', maxZoom:19
 }).addTo(map);
 
-/* ── DRAW ── */
+/* ── INTERACTIVE NODE DRAWING ── */
+function getCol(type){ return type==='study'?'#c84a4a':'#378ADD'; }
+
+function updateDrawVisuals() {
+  if (drawLine)    { map.removeLayer(drawLine);    drawLine=null; }
+  if (drawPolygon) { map.removeLayer(drawPolygon); drawPolygon=null; }
+  const col = getCol(drawMode);
+  if (drawPts.length >= 3) {
+    drawPolygon = L.polygon(drawPts, { color:col, weight:2, fillColor:col, fillOpacity:0.08, dashArray:'6,3' }).addTo(map);
+  } else if (drawPts.length >= 2) {
+    drawLine = L.polyline(drawPts, { color:col, weight:2, dashArray:'6,3' }).addTo(map);
+  }
+}
+
+function updatePreviewLine(latlng) {
+  if (!drawMode || drawPts.length===0) return;
+  if (drawPreviewLine) { map.removeLayer(drawPreviewLine); drawPreviewLine=null; }
+  const last = drawPts[drawPts.length-1];
+  drawPreviewLine = L.polyline([[last[0],last[1]], [latlng.lat,latlng.lng]], {
+    color:getCol(drawMode), weight:1.5, dashArray:'4,4', opacity:0.5
+  }).addTo(map);
+}
+
+function makeDrawMarker(pt, idx) {
+  const col = getCol(drawMode);
+  const m = L.circleMarker([pt[0],pt[1]], {
+    radius:7, fillColor:col, color:'#fff', weight:2, fillOpacity:1, zIndexOffset:1000
+  }).addTo(map);
+  m.on('mousedown', function(e) {
+    L.DomEvent.stopPropagation(e);
+    map.dragging.disable();
+    map.on('mousemove', function mv(e2) {
+      drawPts[idx]=[e2.latlng.lat,e2.latlng.lng];
+      m.setLatLng(e2.latlng);
+      updateDrawVisuals();
+    });
+    map.once('mouseup', function(){ map.dragging.enable(); map.off('mousemove'); });
+  });
+  m.on('dblclick', function(e) {
+    L.DomEvent.stopPropagation(e);
+    if (drawPts.length<=3){ showToast('Need at least 3 nodes'); return; }
+    drawPts.splice(idx,1);
+    rebuildDrawMarkers();
+    updateDrawVisuals();
+  });
+  return m;
+}
+
+function rebuildDrawMarkers() {
+  drawMarkers.forEach(m=>map.removeLayer(m)); drawMarkers=[];
+  drawPts.forEach((pt,i)=>{ drawMarkers.push(makeDrawMarker(pt,i)); });
+}
+
 map.on('click', function(e) {
   if (!drawMode) return;
-  drawPts.push([e.latlng.lat, e.latlng.lng]);
-  if (drawLine) map.removeLayer(drawLine);
-  drawLine = L.polyline(drawPts, { color: drawMode==='study'?'#c84a4a':'#378ADD', weight:2, dashArray:'6,3' }).addTo(map);
+  const pt=[e.latlng.lat, e.latlng.lng];
+  drawPts.push(pt);
+  drawMarkers.push(makeDrawMarker(pt, drawPts.length-1));
+  updateDrawVisuals();
+  if (drawPts.length===3) showToast('Drag nodes to adjust · Double-click map to finish · Dbl-click node to delete');
 });
+
+map.on('mousemove', function(e) {
+  if (!drawMode || drawPts.length===0) return;
+  updatePreviewLine(e.latlng);
+});
+
 map.on('dblclick', function(e) {
-  if (!drawMode || drawPts.length < 3) return;
+  if (!drawMode || drawPts.length<3) return;
   finishDraw();
   L.DomEvent.stopPropagation(e);
   L.DomEvent.preventDefault(e);
 });
 
 function startDraw(type) {
-  if (drawMode === type) { cancelDraw(); return; }
+  if (drawMode===type){ cancelDraw(); return; }
   cancelDraw();
-  drawMode = type; drawPts = [];
-  const btn = document.getElementById(type==='study' ? 'study-btn' : 'ctx-btn');
+  drawMode=type; drawPts=[];
+  const btn=document.getElementById(type==='study'?'study-btn':'ctx-btn');
   btn.classList.add('drawing');
-  btn.textContent = 'Double-click to finish';
-  map.getContainer().style.cursor = 'crosshair';
-  showToast(type==='study' ? 'Click to draw study area — double-click to close' : 'Click to draw global context — double-click to close');
+  btn.textContent='Double-click to finish';
+  map.getContainer().style.cursor='crosshair';
+  showToast('Click to add nodes · Drag nodes to move · Double-click to finish');
 }
+
 function cancelDraw() {
-  if (drawLine) { map.removeLayer(drawLine); drawLine=null; }
-  drawPts = [];
+  if (drawLine)    { map.removeLayer(drawLine);    drawLine=null; }
+  if (drawPolygon) { map.removeLayer(drawPolygon); drawPolygon=null; }
+  if (drawPreviewLine){ map.removeLayer(drawPreviewLine); drawPreviewLine=null; }
+  drawMarkers.forEach(m=>map.removeLayer(m)); drawMarkers=[];
+  drawPts=[];
   if (drawMode) {
-    document.getElementById(drawMode==='study'?'study-btn':'ctx-btn').classList.remove('drawing');
-    document.getElementById(drawMode==='study'?'study-btn':'ctx-btn').textContent = drawMode==='study'?'Draw Study Area':'Draw Global Context';
+    const id=drawMode==='study'?'study-btn':'ctx-btn';
+    document.getElementById(id).classList.remove('drawing');
+    document.getElementById(id).textContent=drawMode==='study'?'Draw Study Area':'Draw Global Context';
   }
-  drawMode = null;
-  map.getContainer().style.cursor = '';
+  drawMode=null;
+  map.getContainer().style.cursor='';
 }
+
+function addEditableNodes(type, pts) {
+  const col=getCol(type);
+  editMarkers[type].forEach(m=>map.removeLayer(m)); editMarkers[type]=[];
+  pts.forEach((pt,idx)=>{
+    const m=L.circleMarker([pt[0],pt[1]],{
+      radius:6, fillColor:col, color:'#fff', weight:2, fillOpacity:0.9, zIndexOffset:900
+    }).addTo(map);
+    m.on('mousedown',function(e){
+      L.DomEvent.stopPropagation(e);
+      map.dragging.disable();
+      map.on('mousemove',function mv(e2){
+        pts[idx]=[e2.latlng.lat,e2.latlng.lng];
+        m.setLatLng(e2.latlng);
+        if (boundLayers[type]) map.removeLayer(boundLayers[type]);
+        boundLayers[type]=L.polygon(pts,{color:col,weight:2,fillColor:col,fillOpacity:0.06,dashArray:type==='study'?'6,3':'4,2'}).addTo(map);
+        bounds[type]=pts.map(p=>[p[1],p[0]]);
+      });
+      map.once('mouseup',function(){ map.dragging.enable(); map.off('mousemove'); });
+    });
+    editMarkers[type].push(m);
+  });
+}
+
 function finishDraw() {
-  const type = drawMode;
-  if (drawLine) { map.removeLayer(drawLine); drawLine=null; }
+  const type=drawMode, col=getCol(type);
+  if (drawLine)    { map.removeLayer(drawLine);    drawLine=null; }
+  if (drawPolygon) { map.removeLayer(drawPolygon); drawPolygon=null; }
+  if (drawPreviewLine){ map.removeLayer(drawPreviewLine); drawPreviewLine=null; }
+  drawMarkers.forEach(m=>map.removeLayer(m)); drawMarkers=[];
   if (boundLayers[type]) map.removeLayer(boundLayers[type]);
-  boundLayers[type] = L.polygon(drawPts, {
-    color: type==='study'?'#c84a4a':'#378ADD', weight:2,
-    fillColor: type==='study'?'#c84a4a':'#378ADD', fillOpacity:0.06,
-    dashArray: type==='study'?'6,3':'4,2'
-  }).addTo(map);
-  bounds[type] = drawPts.map(p => [p[1], p[0]]);
+  const savedPts=[...drawPts.map(p=>[p[0],p[1]])];
+  boundLayers[type]=L.polygon(savedPts,{color:col,weight:2,fillColor:col,fillOpacity:0.06,dashArray:type==='study'?'6,3':'4,2'}).addTo(map);
+  bounds[type]=savedPts.map(p=>[p[1],p[0]]);
+  addEditableNodes(type, savedPts);
   cancelDraw();
-  document.getElementById('clear-btn').style.display = 'block';
-  document.getElementById('boundary-legend').style.display = 'block';
-  showToast(type==='study' ? 'Study area defined' : 'Global context defined');
+  document.getElementById('clear-btn').style.display='block';
+  document.getElementById('boundary-legend').style.display='block';
+  showToast(type==='study'?'Study area set — drag nodes to edit':'Global context set — drag nodes to edit');
 }
+
 function clearBounds() {
-  ['study','ctx'].forEach(t => {
-    if (boundLayers[t]) { map.removeLayer(boundLayers[t]); boundLayers[t]=null; }
-    bounds[t] = null;
+  ['study','ctx'].forEach(t=>{
+    if (boundLayers[t]){ map.removeLayer(boundLayers[t]); boundLayers[t]=null; }
+    editMarkers[t].forEach(m=>map.removeLayer(m)); editMarkers[t]=[];
+    bounds[t]=null;
+    document.getElementById(t==='study'?'study-btn':'ctx-btn').textContent=t==='study'?'Draw Study Area':'Draw Global Context';
   });
   cancelDraw();
-  document.getElementById('clear-btn').style.display = 'none';
-  document.getElementById('boundary-legend').style.display = 'none';
+  document.getElementById('clear-btn').style.display='none';
+  document.getElementById('boundary-legend').style.display='none';
 }
 
 /* ── TABS ── */
