@@ -705,6 +705,56 @@ function toggleAtt(i) {
   attVis[i]=!attVis[i];
   document.getElementById('tog-att-'+i).classList.toggle('on',attVis[i]);
   if (attLayers[i]) { attVis[i]?map.addLayer(attLayers[i]):map.removeLayer(attLayers[i]); }
+  // Re-grade from cached scores if analysis has been run
+  if (segments.length>0) reGradePWN();
+}
+
+function reGradePWN() {
+  const ssW=parseInt(document.getElementById('ssfw').value)/100;
+  const proxW=1-ssW;
+  const p1t=parseInt(document.getElementById('p1t').value)/100;
+  const p2t=parseInt(document.getElementById('p2t').value)/100;
+  const wKeys=['conn','li4','li8','gi','ch'];
+  const wRaw=wKeys.map(k=>parseInt(document.getElementById('w-'+k).value));
+  const wTot=wRaw.reduce((s,v)=>s+v,0)||100;
+  const wN=wRaw.map(v=>v/wTot);
+
+  // Recompute proximity using only visible attractors
+  segments.forEach(s=>{
+    let tot=0;
+    atts.forEach((a,i)=>{
+      if (!a.data||!a.data.features) return;
+      // Only count if attractor layer is visible
+      const score=attVis[i]!==false ? (s._pxDet[a.name]||0) : 0;
+      tot+=score;
+    });
+    s._pxRaw2=tot;
+  });
+  const maxPx=Math.max(1,...segments.map(s=>s._pxRaw2));
+  segments.forEach(s=>{ s._px2=s._pxRaw2/maxPx; });
+
+  // Recompute final score and re-grade
+  segments.forEach(s=>{
+    s._ss=s._coN*wN[0]+s._li4*wN[1]+s._li8*wN[2]+s._gi*wN[3]+s._ch*wN[4];
+    s._final=s._ss*ssW+(s._px2!==undefined?s._px2:s._px)*proxW;
+  });
+  const sorted=[...segments].sort((a,b)=>b._final-a._final);
+  const e1=Math.floor(sorted.length*p1t), e2=Math.floor(sorted.length*(p1t+p2t));
+  sorted.forEach((s,i)=>{ s._pwn=i<e1?'pwn1':i<e2?'pwn2':'pwn3'; });
+  // Apply connectivity gate
+  segments.forEach(s=>{ if (s._co===0 && s._pwn!=='pwn3') { s._pwn='pwn3'; s._gated=true; } else { s._gated=false; } });
+  // Apply loop closing
+  closeLoops(segments);
+  // Re-render
+  renderSegs(segments);
+  // Update stats
+  const c1=segments.filter(s=>s._pwn==='pwn1').length;
+  const c2=segments.filter(s=>s._pwn==='pwn2').length;
+  const c3=segments.filter(s=>s._pwn==='pwn3').length;
+  document.getElementById('s1').textContent=c1;
+  document.getElementById('s2').textContent=c2;
+  document.getElementById('s3').textContent=c3;
+  showToast('PWN re-graded — '+c1+' critical, '+c2+' important');
 }
 function toggleBase() {
   baseVis=!baseVis;
@@ -774,6 +824,8 @@ async function runAnalysis() {
   const sorted=[...sSegs].sort((a,b)=>b._final-a._final);
   const e1=Math.floor(sorted.length*p1t), e2=Math.floor(sorted.length*(p1t+p2t));
   sorted.forEach((s,i)=>{ s._pwn=i<e1?'pwn1':i<e2?'pwn2':'pwn3'; });
+  // Connectivity gate: isolated segments (zero neighbours) cannot be PWN 1 or PWN 2
+  sSegs.forEach((s,i)=>{ if (s._co===0 && s._pwn!=='pwn3') { s._pwn='pwn3'; s._gated=true; } });
 
   setP(94,'Closing loops...'); await sleep(20);
   closeLoops(sSegs);
@@ -835,15 +887,33 @@ function segRoads(net,segLen) {
 }
 
 function buildGraph(segs) {
-  const SNAP=0.00012, nmap={};
-  const key=c=>Math.round(c[0]/SNAP)+','+Math.round(c[1]/SNAP);
-  segs.forEach((s,i)=>{ const c=s.geometry.coordinates, sk=key(c[0]), ek=key(c[c.length-1]);
-    if (!nmap[sk]) nmap[sk]=[]; if (!nmap[ek]) nmap[ek]=[];
-    nmap[sk].push(i); nmap[ek].push(i); });
+  // Build endpoint index at two snap tolerances — tight first, wider fallback
+  const SNAP1=0.00008, SNAP2=0.00020, nmap1={}, nmap2={};
+  const key1=c=>Math.round(c[0]/SNAP1)+','+Math.round(c[1]/SNAP1);
+  const key2=c=>Math.round(c[0]/SNAP2)+','+Math.round(c[1]/SNAP2);
+  segs.forEach((s,i)=>{
+    const c=s.geometry.coordinates, sk1=key1(c[0]), ek1=key1(c[c.length-1]);
+    const sk2=key2(c[0]), ek2=key2(c[c.length-1]);
+    if (!nmap1[sk1]) nmap1[sk1]=[]; if (!nmap1[ek1]) nmap1[ek1]=[];
+    nmap1[sk1].push(i); nmap1[ek1].push(i);
+    if (!nmap2[sk2]) nmap2[sk2]=[]; if (!nmap2[ek2]) nmap2[ek2]=[];
+    nmap2[sk2].push(i); nmap2[ek2].push(i);
+  });
   const g={};
-  segs.forEach((s,i)=>{ g[i]=new Set(); const c=s.geometry.coordinates, sk=key(c[0]), ek=key(c[c.length-1]);
-    (nmap[sk]||[]).forEach(j=>{ if(j!==i) g[i].add(j); });
-    (nmap[ek]||[]).forEach(j=>{ if(j!==i) g[i].add(j); }); });
+  segs.forEach((s,i)=>{
+    g[i]=new Set();
+    const c=s.geometry.coordinates;
+    // Try tight snap first
+    const sk1=key1(c[0]), ek1=key1(c[c.length-1]);
+    (nmap1[sk1]||[]).forEach(j=>{ if(j!==i) g[i].add(j); });
+    (nmap1[ek1]||[]).forEach(j=>{ if(j!==i) g[i].add(j); });
+    // If still isolated, try wider snap
+    if (g[i].size===0) {
+      const sk2=key2(c[0]), ek2=key2(c[c.length-1]);
+      (nmap2[sk2]||[]).forEach(j=>{ if(j!==i) g[i].add(j); });
+      (nmap2[ek2]||[]).forEach(j=>{ if(j!==i) g[i].add(j); });
+    }
+  });
   return g;
 }
 
@@ -963,7 +1033,7 @@ function renderSegs(segs) {
 function showInfo(s) {
   const pc={pwn1:'#c8522a',pwn2:'#c89020',pwn3:'#4a8a2a'};
   const pl={pwn1:'PWN 1 — Critical',pwn2:'PWN 2 — Important',pwn3:'PWN 3 — Secondary'};
-  document.getElementById('info-id').textContent='Segment #'+s._id+(s._loop?' · loop-closed':'');
+  document.getElementById('info-id').textContent='Segment #'+s._id+(s._loop?' · loop-closed':'')+(s._gated?' · isolated':'');
   document.getElementById('info-grade').textContent=pl[s._pwn]||'—';
   document.getElementById('info-grade').style.color=pc[s._pwn]||'#888';
   document.getElementById('info-bar-fill').style.width=Math.round((s._final||0)*100)+'%';
