@@ -552,9 +552,8 @@ function renderAtts() {
       <div class="att-dot" style="background:${a.color}"></div>
       <span class="att-name">${a.name}</span>
       ${a.count?`<span class="att-count">${a.count}</span>`:''}
-      <label class="att-upload-lbl">${a.data?'Replace':'Upload'}
-        <input type="file" accept=".geojson,.json,.kml" onchange="loadAttFile(${i},this)"/>
-      </label>
+      <input type="file" accept=".geojson,.json,.kml" id="att-file-${i}" style="display:none" onchange="loadAttFile(${i},this)"/>
+      <span class="att-upload-lbl" onclick="document.getElementById('att-file-${i}').click()">${a.data?'Replace':'Upload'}</span>
       <span class="att-rm" onclick="removeAtt(${i})">×</span>
     </div>`).join('');
 }
