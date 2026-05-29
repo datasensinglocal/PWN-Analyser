@@ -6,144 +6,176 @@
 <title>PWN Analyser — Priority Walking Network</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <style>
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-body { display: flex; height: 100vh; overflow: hidden; font-family: 'Segoe UI', system-ui, sans-serif; background: #111318; color: #e2ddd6; }
-#sidebar { width: 330px; min-width: 330px; background: #131313; border-right: 1px solid #252525; display: flex; flex-direction: column; overflow: hidden; z-index: 10; }
-#map-panel { flex: 1; position: relative; }
-#map { width: 100%; height: 100%; }
-.sb-header { padding: 16px 18px 12px; border-bottom: 1px solid #252525; background: #0d0d0d; }
-.sb-eyebrow { font-size: 9px; font-weight: 600; letter-spacing: 0.18em; text-transform: uppercase; color: #c8a96e; margin-bottom: 4px; }
-.sb-title { font-size: 20px; font-weight: 300; color: #e2ddd6; letter-spacing: -0.02em; line-height: 1.2; }
-.sb-sub { font-size: 10px; color: #444; margin-top: 3px; line-height: 1.5; }
-.sb-tabs { display: flex; border-bottom: 1px solid #252525; background: #0d0d0d; }
-.tab-btn { flex: 1; padding: 9px 4px; font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; text-align: center; cursor: pointer; color: #484848; border: none; border-bottom: 2px solid transparent; background: none; font-family: inherit; transition: color 0.2s, border-color 0.2s; }
-.tab-btn:hover { color: #888; }
-.tab-btn.active { color: #e2ddd6; border-bottom-color: #c8a96e; }
-.sb-body { flex: 1; overflow-y: auto; padding: 14px 16px; }
-.sb-body::-webkit-scrollbar { width: 3px; }
-.sb-body::-webkit-scrollbar-thumb { background: #252525; border-radius: 2px; }
-.section { margin-bottom: 18px; }
-.sec-label { font-size: 9px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: #484848; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid #1c1c1c; }
-input[type="text"], input[type="number"] { background: #1a1a1a; border: 1px solid #252525; color: #e2ddd6; border-radius: 5px; padding: 0 10px; font-size: 12px; font-family: inherit; height: 30px; width: 100%; outline: none; transition: border-color 0.15s; }
-input[type="text"]:focus, input[type="number"]:focus { border-color: #c8a96e; }
-input[type="number"] { width: 60px; text-align: center; }
-input[type="range"] { width: 100%; height: 3px; accent-color: #c8a96e; cursor: pointer; background: #252525; border-radius: 2px; appearance: none; -webkit-appearance: none; }
-input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 13px; height: 13px; border-radius: 50%; background: #c8a96e; cursor: pointer; border: 2px solid #131313; }
-.btn { height: 28px; padding: 0 12px; font-size: 10px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; border: 1px solid #252525; border-radius: 5px; background: #1a1a1a; color: #888; cursor: pointer; white-space: nowrap; font-family: inherit; transition: all 0.15s; }
-.btn:hover { border-color: #c8a96e; color: #c8a96e; }
-.row { display: flex; gap: 7px; align-items: center; margin-bottom: 6px; }
-.city-chip { display: flex; align-items: center; gap: 7px; padding: 6px 10px; background: #1a1a1a; border: 1px solid #252525; border-radius: 5px; font-size: 12px; cursor: pointer; margin-bottom: 5px; transition: all 0.15s; }
-.city-chip:hover { border-color: #c8a96e; }
-.city-chip.active { border-color: #c8a96e; background: #1c1914; }
-.city-chip.active .city-name { color: #c8a96e; }
-.city-name { flex: 1; color: #ccc; }
-.city-net { font-size: 9px; color: #4a8a2a; font-family: monospace; font-weight: 700; }
-.city-rm { color: #383838; cursor: pointer; font-size: 16px; line-height: 1; }
-.city-rm:hover { color: #c84a4a; }
-.upload-zone { border: 1px dashed #2a2a2a; border-radius: 5px; padding: 10px 12px; text-align: center; cursor: pointer; position: relative; background: #101010; margin-bottom: 6px; transition: all 0.15s; }
-.upload-zone:hover { border-color: #c8a96e; background: #181510; }
-.upload-zone.loaded { border-color: #3a5a3a; background: #101810; }
-.upload-zone input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
-.uz-title { font-size: 11px; font-weight: 600; color: #888; }
-.uz-title.ok { color: #5a9a5a; }
-.uz-sub { font-size: 10px; color: #3a3a3a; margin-top: 2px; }
-.att-item { display: flex; align-items: center; gap: 6px; padding: 6px 8px; background: #1a1a1a; border: 1px solid #252525; border-radius: 5px; margin-bottom: 4px; font-size: 11px; }
-.att-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
-.att-name { flex: 1; color: #ccc; }
-.att-count { font-size: 10px; color: #484848; font-family: monospace; }
-.att-upload-lbl { font-size: 10px; color: #c8a96e; cursor: pointer; position: relative; white-space: nowrap; }
-.att-upload-lbl input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
-.att-rm { color: #383838; cursor: pointer; font-size: 14px; line-height: 1; }
-.att-rm:hover { color: #c84a4a; }
-.ss-block { background: #101010; border: 1px solid #1c1c1c; border-radius: 5px; padding: 10px 12px; }
-.ss-wr { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
-.ss-wr:last-of-type { margin-bottom: 4px; }
-.ss-lbl { font-size: 11px; color: #5a5a5a; width: 96px; flex-shrink: 0; line-height: 1.4; }
-.ss-val { font-size: 10px; color: #c8a96e; font-family: monospace; width: 34px; text-align: right; }
-.ss-total { font-size: 10px; color: #484848; text-align: right; font-family: monospace; margin-top: 4px; }
-.ss-total.warn { color: #c84a4a; }
-.w-row { margin-bottom: 10px; }
-.w-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
-.w-lbl { font-size: 11px; color: #888; }
-.w-val { font-size: 11px; color: #c8a96e; font-family: monospace; }
-.mtx { width: 100%; font-size: 11px; border-collapse: collapse; }
-.mtx th { text-align: left; color: #484848; font-weight: 600; padding: 4px 6px; border-bottom: 1px solid #1c1c1c; font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase; }
-.mtx td { padding: 4px 6px; color: #ccc; vertical-align: middle; }
-.mtx td input[type="number"] { width: 58px; height: 24px; font-size: 11px; }
-.pwn-row { display: flex; align-items: center; gap: 7px; margin-bottom: 8px; }
-.pwn-swatch { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
-.pwn-name { font-size: 11px; color: #888; width: 46px; flex-shrink: 0; }
-.pwn-val { font-size: 10px; color: #ccc; font-family: monospace; width: 34px; text-align: right; }
-.run-btn { width: 100%; height: 38px; background: #c8a96e; color: #0d0d0d; border: none; border-radius: 5px; font-size: 11px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; cursor: pointer; font-family: inherit; margin-top: 6px; transition: background 0.15s; }
-.run-btn:hover { background: #dbb97e; }
-.run-btn:disabled { background: #252525; color: #3a3a3a; cursor: not-allowed; }
-.tog-row { display: flex; align-items: center; gap: 8px; font-size: 11px; color: #484848; cursor: pointer; padding: 5px 0; transition: color 0.15s; }
-.tog-row.on { color: #ccc; }
-.tog-sw { width: 20px; height: 3px; border-radius: 2px; flex-shrink: 0; opacity: 0.3; transition: opacity 0.2s; }
-.tog-row.on .tog-sw { opacity: 1; }
-.stats-footer { border-top: 1px solid #252525; background: #0d0d0d; display: none; }
-.stat { flex: 1; padding: 8px 4px; text-align: center; border-right: 1px solid #1a1a1a; }
-.stat:last-child { border-right: none; }
-.stat-val { font-size: 13px; font-weight: 600; font-family: monospace; }
-.stat-lbl { font-size: 9px; color: #3a3a3a; text-transform: uppercase; letter-spacing: 0.08em; margin-top: 2px; }
-.no-city { text-align: center; padding: 40px 16px; color: #303030; font-size: 11px; line-height: 2.2; }
-.map-controls { position: absolute; top: 14px; left: 14px; z-index: 500; display: flex; flex-direction: column; gap: 6px; }
-.map-btn { background: rgba(13,13,13,0.92); border: 1px solid #2a2a2a; border-radius: 5px; padding: 7px 13px; font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; cursor: pointer; color: #666; font-family: inherit; transition: all 0.15s; }
-.map-btn:hover { border-color: #c8a96e; color: #c8a96e; }
-.map-btn.study { border-color: #6a3a3a; color: #cc8888; }
-.map-btn.study.drawing { background: rgba(30,10,10,0.95); border-color: #c84a4a; color: #ff9999; animation: pulse-red 1.4s infinite; }
-.map-btn.ctx { border-color: #3a4a68; color: #88aacc; }
-.map-btn.ctx.drawing { background: rgba(10,16,28,0.95); border-color: #378ADD; color: #88ccff; animation: pulse-blue 1.4s infinite; }
-@keyframes pulse-red { 0%,100% { border-color: #c84a4a; } 50% { border-color: #ff7777; } }
-@keyframes pulse-blue { 0%,100% { border-color: #378ADD; } 50% { border-color: #77bbff; } }
-.legend { position: absolute; bottom: 18px; right: 14px; background: rgba(13,13,13,0.92); border: 1px solid #252525; border-radius: 6px; padding: 11px 14px; z-index: 500; display: none; }
-.leg-title { font-size: 9px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: #484848; margin-bottom: 8px; }
-.leg-row { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; font-size: 11px; color: #888; }
-.leg-line { height: 3px; width: 22px; border-radius: 2px; flex-shrink: 0; }
-.boundary-legend { position: absolute; bottom: 18px; left: 14px; background: rgba(13,13,13,0.92); border: 1px solid #252525; border-radius: 6px; padding: 9px 12px; z-index: 500; display: none; }
-.bl-row { display: flex; align-items: center; gap: 7px; font-size: 10px; color: #666; margin-bottom: 3px; }
-.bl-row:last-child { margin-bottom: 0; }
-.bl-line { width: 18px; height: 2px; border-radius: 1px; }
-.info-panel { position: absolute; top: 14px; right: 14px; background: rgba(13,13,13,0.95); border: 1px solid #252525; border-radius: 6px; padding: 12px 14px; z-index: 500; width: 215px; display: none; }
-.info-close { position: absolute; top: 8px; right: 10px; color: #383838; cursor: pointer; font-size: 16px; line-height: 1; }
-.info-close:hover { color: #888; }
-.info-seg-id { font-size: 9px; color: #484848; margin-bottom: 5px; font-family: monospace; }
-.info-grade { font-size: 13px; font-weight: 600; margin-bottom: 8px; }
-.info-bar { height: 2px; background: #1a1a1a; border-radius: 2px; margin-bottom: 8px; overflow: hidden; }
-.info-bar-fill { height: 100%; background: #c8a96e; border-radius: 2px; transition: width 0.4s ease; }
-.info-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 3px; }
-.info-lbl { font-size: 10px; color: #484848; }
-.info-val { font-size: 10px; color: #c8a96e; font-family: monospace; }
-.info-divider { border: none; border-top: 1px solid #1c1c1c; margin: 6px 0; }
-.prog-overlay { position: absolute; inset: 0; background: rgba(8,8,8,0.9); z-index: 1000; display: none; align-items: center; justify-content: center; flex-direction: column; }
-.prog-box { background: #131313; border: 1px solid #252525; border-radius: 8px; padding: 24px 32px; text-align: center; min-width: 260px; }
-.prog-title { font-size: 14px; font-weight: 300; color: #e2ddd6; margin-bottom: 4px; }
-.prog-step { font-size: 10px; color: #484848; margin-bottom: 14px; font-family: monospace; min-height: 14px; }
-.prog-track { height: 2px; background: #252525; border-radius: 2px; overflow: hidden; }
-.prog-fill { height: 100%; background: #c8a96e; border-radius: 2px; transition: width 0.25s ease; }
-.prog-pct { font-size: 11px; color: #c8a96e; font-family: monospace; margin-top: 6px; }
-.toast { position: absolute; bottom: 22px; left: 50%; transform: translateX(-50%); background: #1a1a1a; border: 1px solid #2a2a2a; color: #c8a96e; padding: 8px 16px; border-radius: 5px; font-size: 10px; font-family: monospace; z-index: 2000; opacity: 0; transition: opacity 0.3s; pointer-events: none; white-space: nowrap; }
-.toast.show { opacity: 1; }
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{display:flex;height:100vh;overflow:hidden;font-family:'Segoe UI',system-ui,sans-serif;background:#1a1a1a;color:#e2ddd6}
+
+/* ── SIDEBAR ── */
+#sidebar{width:340px;min-width:340px;background:#141414;border-right:1px solid #2a2a2a;display:flex;flex-direction:column;overflow:hidden;z-index:10}
+.sb-head{padding:14px 16px 10px;border-bottom:1px solid #252525;background:#0d0d0d;flex-shrink:0}
+.sb-eyebrow{font-size:9px;font-weight:600;letter-spacing:.18em;text-transform:uppercase;color:#c8a96e;margin-bottom:3px}
+.sb-title{font-size:18px;font-weight:300;color:#e2ddd6;letter-spacing:-.02em}
+.sb-sub{font-size:10px;color:#444;margin-top:2px}
+.sb-tabs{display:flex;border-bottom:1px solid #252525;background:#0d0d0d;flex-shrink:0}
+.tab{flex:1;padding:8px 2px;font-size:10px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;text-align:center;cursor:pointer;color:#484848;border:none;border-bottom:2px solid transparent;background:none;font-family:inherit;transition:all .2s}
+.tab:hover{color:#888}
+.tab.active{color:#e2ddd6;border-bottom-color:#c8a96e}
+.run-bar{padding:10px 14px;border-bottom:1px solid #252525;background:#0d0d0d;flex-shrink:0;display:flex;gap:8px}
+.run-btn{flex:1;height:36px;background:#c8a96e;color:#0d0d0d;border:none;border-radius:5px;font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;cursor:pointer;font-family:inherit;transition:background .15s}
+.run-btn:hover{background:#dbb97e}
+.run-btn:disabled{background:#252525;color:#444;cursor:not-allowed}
+.conn-btn{height:36px;padding:0 12px;background:#1a2a1a;color:#4a9a4a;border:1px solid #2a4a2a;border-radius:5px;font-size:10px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;cursor:pointer;font-family:inherit;transition:all .15s;white-space:nowrap}
+.conn-btn:hover{background:#2a3a2a;border-color:#4a9a4a}
+.conn-btn.active{background:#2a4a2a;border-color:#4a9a4a;color:#7aca7a}
+.conn-btn:disabled{background:#1a1a1a;color:#333;border-color:#222;cursor:not-allowed}
+.sb-body{flex:1;overflow-y:auto;padding:12px 14px}
+.sb-body::-webkit-scrollbar{width:3px}
+.sb-body::-webkit-scrollbar-thumb{background:#252525;border-radius:2px}
+.section{margin-bottom:16px}
+.sec-label{font-size:9px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#484848;margin-bottom:7px;padding-bottom:5px;border-bottom:1px solid #1c1c1c}
+input[type=text],input[type=number]{background:#1a1a1a;border:1px solid #252525;color:#e2ddd6;border-radius:4px;padding:0 8px;font-size:12px;font-family:inherit;height:28px;outline:none;transition:border-color .15s}
+input[type=text]:focus,input[type=number]:focus{border-color:#c8a96e}
+input[type=number]{width:58px;text-align:center}
+input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
+.row{display:flex;gap:6px;align-items:center;margin-bottom:5px}
+.btn{height:26px;padding:0 10px;font-size:10px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;border:1px solid #252525;border-radius:4px;background:#1a1a1a;color:#888;cursor:pointer;white-space:nowrap;font-family:inherit;transition:all .15s}
+.btn:hover{border-color:#c8a96e;color:#c8a96e}
+
+/* city chips */
+.city-chip{display:flex;align-items:center;gap:6px;padding:5px 8px;background:#1a1a1a;border:1px solid #252525;border-radius:4px;font-size:12px;cursor:pointer;margin-bottom:4px;transition:all .15s}
+.city-chip:hover,.city-chip.active{border-color:#c8a96e}
+.city-chip.active .cname{color:#c8a96e}
+.cname{flex:1;color:#ccc}
+.crm{color:#383838;cursor:pointer;font-size:15px;line-height:1}
+.crm:hover{color:#c84a4a}
+
+/* upload */
+.upload-zone{border:1px dashed #2a2a2a;border-radius:4px;padding:9px 12px;text-align:center;cursor:pointer;position:relative;background:#101010;margin-bottom:5px;transition:all .15s}
+.upload-zone:hover{border-color:#c8a96e;background:#181510}
+.upload-zone.loaded{border-color:#3a5a3a;background:#101810}
+.upload-zone input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+.uz-t{font-size:11px;font-weight:600;color:#888}
+.uz-t.ok{color:#5a9a5a}
+.uz-s{font-size:10px;color:#3a3a3a;margin-top:1px}
+
+/* attractor items */
+.att-item{background:#1a1a1a;border:1px solid #252525;border-radius:4px;margin-bottom:6px;overflow:hidden}
+.att-head{display:flex;align-items:center;gap:6px;padding:6px 8px;cursor:pointer}
+.att-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.att-name{flex:1;color:#ccc;font-size:11px;font-weight:500}
+.att-count{font-size:10px;color:#484848;font-family:monospace}
+.att-actions{display:flex;gap:6px;align-items:center}
+.att-ul{font-size:10px;color:#c8a96e;cursor:pointer;position:relative;white-space:nowrap}
+.att-ul input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+.att-rm{color:#383838;cursor:pointer;font-size:13px}
+.att-rm:hover{color:#c84a4a}
+.att-config{padding:8px 10px;border-top:1px solid #1c1c1c;background:#111;display:none}
+.att-config.open{display:block}
+.att-cfg-row{display:flex;align-items:center;gap:6px;margin-bottom:6px;font-size:11px;color:#666}
+.att-cfg-row:last-child{margin-bottom:0}
+.att-cfg-lbl{width:90px;flex-shrink:0;font-size:10px;color:#555}
+.mode-sel{background:#1a1a1a;border:1px solid #252525;color:#ccc;border-radius:3px;padding:2px 5px;font-size:10px;font-family:inherit;outline:none;cursor:pointer;flex:1}
+.mode-sel:focus{border-color:#c8a96e}
+
+/* weights */
+.ss-block{background:#111;border:1px solid #1c1c1c;border-radius:4px;padding:9px 11px}
+.ss-wr{display:flex;align-items:center;gap:8px;margin-bottom:7px}
+.ss-wr:last-of-type{margin-bottom:3px}
+.ss-lbl{font-size:11px;color:#5a5a5a;width:100px;flex-shrink:0;line-height:1.4}
+.ss-val{font-size:10px;color:#c8a96e;font-family:monospace;width:34px;text-align:right}
+.ss-total{font-size:10px;color:#484848;text-align:right;font-family:monospace;margin-top:4px}
+.ss-total.warn{color:#c84a4a}
+.w-row{margin-bottom:9px}
+.w-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:3px}
+.w-lbl{font-size:11px;color:#888}
+.w-val{font-size:11px;color:#c8a96e;font-family:monospace}
+.pwn-row{display:flex;align-items:center;gap:7px;margin-bottom:7px}
+.pwn-sw{width:10px;height:10px;border-radius:2px;flex-shrink:0}
+.pwn-nm{font-size:11px;color:#888;width:46px;flex-shrink:0}
+.pwn-val{font-size:10px;color:#ccc;font-family:monospace;width:34px;text-align:right}
+
+/* layer toggles */
+.tog-row{display:flex;align-items:center;gap:8px;font-size:11px;color:#484848;cursor:pointer;padding:4px 0;transition:color .15s}
+.tog-row.on{color:#ccc}
+.tog-sw{width:20px;height:3px;border-radius:2px;flex-shrink:0;opacity:.3;transition:opacity .2s}
+.tog-row.on .tog-sw{opacity:1}
+
+/* stats */
+.stats-footer{border-top:1px solid #252525;background:#0d0d0d;display:none;flex-shrink:0}
+.stats-inner{display:flex}
+.stat{flex:1;padding:7px 4px;text-align:center;border-right:1px solid #1a1a1a}
+.stat:last-child{border-right:none}
+.stat-val{font-size:12px;font-weight:600;font-family:monospace}
+.stat-lbl{font-size:9px;color:#3a3a3a;text-transform:uppercase;letter-spacing:.07em;margin-top:1px}
+.no-city{text-align:center;padding:36px 14px;color:#2a2a2a;font-size:11px;line-height:2.2}
+
+/* ── MAP ── */
+#map-panel{flex:1;position:relative}
+#map{width:100%;height:100%}
+.map-controls{position:absolute;top:14px;left:14px;z-index:500;display:flex;flex-direction:column;gap:6px}
+.map-btn{background:rgba(13,13,13,.92);border:1px solid #2a2a2a;border-radius:4px;padding:7px 13px;font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;cursor:pointer;color:#666;font-family:inherit;transition:all .15s}
+.map-btn:hover{border-color:#c8a96e;color:#c8a96e}
+.map-btn.study{border-color:#7a3a3a;color:#cc8888}
+.map-btn.study.drawing{background:rgba(30,10,10,.95);border-color:#D0021B;color:#ff9999;animation:pr 1.4s infinite}
+.map-btn.ctx{border-color:#3a4a68;color:#88aacc}
+.map-btn.ctx.drawing{background:rgba(10,16,28,.95);border-color:#1565C0;color:#88ccff;animation:pb 1.4s infinite}
+@keyframes pr{0%,100%{border-color:#D0021B}50%{border-color:#ff7777}}
+@keyframes pb{0%,100%{border-color:#1565C0}50%{border-color:#77bbff}}
+
+/* legend */
+.legend{position:absolute;bottom:18px;right:14px;background:rgba(13,13,13,.93);border:1px solid #252525;border-radius:6px;padding:11px 14px;z-index:500;display:none;min-width:175px}
+.leg-title{font-size:9px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#484848;margin-bottom:8px}
+.leg-row{display:flex;align-items:center;gap:8px;margin-bottom:5px;font-size:11px;color:#888}
+.leg-line{height:3px;width:22px;border-radius:2px;flex-shrink:0}
+.leg-row.conn-row{margin-top:5px;padding-top:5px;border-top:1px solid #1c1c1c}
+
+/* boundary legend */
+.bl{position:absolute;bottom:18px;left:14px;background:rgba(13,13,13,.93);border:1px solid #252525;border-radius:6px;padding:8px 11px;z-index:500;display:none}
+.bl-row{display:flex;align-items:center;gap:7px;font-size:10px;color:#666;margin-bottom:3px}
+.bl-row:last-child{margin-bottom:0}
+.bl-line{width:16px;height:2px;border-radius:1px}
+
+/* info panel */
+.info-panel{position:absolute;top:14px;right:14px;background:rgba(13,13,13,.96);border:1px solid #252525;border-radius:6px;padding:12px 14px;z-index:500;width:220px;display:none}
+.info-close{position:absolute;top:7px;right:9px;color:#383838;cursor:pointer;font-size:15px}
+.info-close:hover{color:#888}
+.info-seg-id{font-size:9px;color:#484848;margin-bottom:4px;font-family:monospace}
+.info-grade{font-size:13px;font-weight:600;margin-bottom:7px}
+.ibar{height:2px;background:#1a1a1a;border-radius:2px;margin-bottom:8px;overflow:hidden}
+.ibar-fill{height:100%;background:#c8a96e;border-radius:2px;transition:width .4s}
+.ir{display:flex;justify-content:space-between;align-items:center;margin-bottom:3px}
+.il{font-size:10px;color:#484848}
+.iv{font-size:10px;color:#c8a96e;font-family:monospace}
+.idiv{border:none;border-top:1px solid #1c1c1c;margin:5px 0}
+
+/* progress */
+.prog-overlay{position:absolute;inset:0;background:rgba(8,8,8,.9);z-index:1000;display:none;align-items:center;justify-content:center}
+.prog-box{background:#131313;border:1px solid #252525;border-radius:8px;padding:24px 32px;text-align:center;min-width:260px}
+.prog-title{font-size:14px;font-weight:300;color:#e2ddd6;margin-bottom:4px}
+.prog-step{font-size:10px;color:#484848;margin-bottom:14px;font-family:monospace;min-height:14px}
+.prog-track{height:2px;background:#252525;border-radius:2px;overflow:hidden}
+.prog-fill{height:100%;background:#c8a96e;border-radius:2px;transition:width .25s}
+.prog-pct{font-size:11px;color:#c8a96e;font-family:monospace;margin-top:5px}
+
+.toast{position:absolute;bottom:20px;left:50%;transform:translateX(-50%);background:#1a1a1a;border:1px solid #2a2a2a;color:#c8a96e;padding:7px 14px;border-radius:4px;font-size:10px;font-family:monospace;z-index:2000;opacity:0;transition:opacity .3s;pointer-events:none;white-space:nowrap}
+.toast.show{opacity:1}
 </style>
 </head>
 <body>
-
 <div id="sidebar">
-  <div class="sb-header">
+  <div class="sb-head">
     <div class="sb-eyebrow">Urban Mobility Analysis</div>
     <div class="sb-title">PWN Analyser</div>
     <div class="sb-sub">Priority Walking Network · Space Syntax + Trip Attractors</div>
   </div>
   <div class="sb-tabs">
-    <button class="tab-btn active" onclick="switchTab('data')">Data</button>
-    <button class="tab-btn" onclick="switchTab('weights')">Weights</button>
-    <button class="tab-btn" onclick="switchTab('layers')">Layers</button>
+    <button class="tab active" onclick="switchTab('data')">Data</button>
+    <button class="tab" onclick="switchTab('weights')">Weights</button>
+    <button class="tab" onclick="switchTab('layers')">Layers</button>
   </div>
-  <!-- Run button always visible -->
-  <div style="padding:10px 16px;border-bottom:1px solid #252525;background:#0d0d0d">
+  <div class="run-bar">
     <button class="run-btn" onclick="runAnalysis()">Run PWN Analysis</button>
+    <button class="conn-btn" id="conn-btn" onclick="toggleConnectors()" disabled>Connectors</button>
   </div>
-
   <div class="sb-body">
 
     <!-- DATA TAB -->
@@ -161,20 +193,20 @@ input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 13p
           <div class="sec-label">Street Network</div>
           <div class="upload-zone" id="net-zone">
             <input type="file" accept=".geojson,.json,.kml" onchange="loadNetwork(this)"/>
-            <div class="uz-title" id="net-title">Upload GeoJSON</div>
-            <div class="uz-sub" id="net-sub">GeoJSON or KML road network</div>
+            <div class="uz-t" id="net-t">Upload GeoJSON or KML</div>
+            <div class="uz-s" id="net-s">LineString road network</div>
           </div>
         </div>
         <div class="section">
           <div class="sec-label">Trip Attractors</div>
           <div id="att-list"></div>
-          <div class="row" style="margin-top:8px">
-            <input type="text" id="new-att-name" placeholder="New attractor type..." style="flex:1"/>
+          <div class="row" style="margin-top:7px">
+            <input type="text" id="new-att" placeholder="New attractor type..." style="flex:1"/>
             <button class="btn" onclick="addAttType()">Add</button>
           </div>
         </div>
       </div>
-      <div id="no-city" class="no-city">Add a city above<br>then upload your<br>road network GeoJSON</div>
+      <div id="no-city" class="no-city">Add a city above<br>then upload your<br>road network</div>
     </div>
 
     <!-- WEIGHTS TAB -->
@@ -183,10 +215,10 @@ input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 13p
         <div class="sec-label">Space Syntax Sub-score Weights</div>
         <div class="ss-block">
           <div class="ss-wr"><span class="ss-lbl">Connectivity</span><input type="range" id="w-conn" min="0" max="100" value="10" step="1" oninput="syncSSW()"/><span class="ss-val" id="wv-conn">10%</span></div>
-          <div class="ss-wr"><span class="ss-lbl">Local Int. 400m</span><input type="range" id="w-li4" min="0" max="100" value="30" step="1" oninput="syncSSW()"/><span class="ss-val" id="wv-li4">30%</span></div>
-          <div class="ss-wr"><span class="ss-lbl">Local Int. 800m</span><input type="range" id="w-li8" min="0" max="100" value="25" step="1" oninput="syncSSW()"/><span class="ss-val" id="wv-li8">25%</span></div>
+          <div class="ss-wr"><span class="ss-lbl">Local Int. 800m</span><input type="range" id="w-li8" min="0" max="100" value="30" step="1" oninput="syncSSW()"/><span class="ss-val" id="wv-li8">30%</span></div>
           <div class="ss-wr"><span class="ss-lbl">Global Int.</span><input type="range" id="w-gi" min="0" max="100" value="20" step="1" oninput="syncSSW()"/><span class="ss-val" id="wv-gi">20%</span></div>
-          <div class="ss-wr"><span class="ss-lbl">Choice 800m</span><input type="range" id="w-ch" min="0" max="100" value="15" step="1" oninput="syncSSW()"/><span class="ss-val" id="wv-ch">15%</span></div>
+          <div class="ss-wr"><span class="ss-lbl">Local Choice 1200m</span><input type="range" id="w-ch" min="0" max="100" value="25" step="1" oninput="syncSSW()"/><span class="ss-val" id="wv-ch">25%</span></div>
+          <div class="ss-wr"><span class="ss-lbl">Global Choice</span><input type="range" id="w-gch" min="0" max="100" value="15" step="1" oninput="syncSSW()"/><span class="ss-val" id="wv-gch">15%</span></div>
           <div class="ss-total" id="ss-total">Total: 100%</div>
         </div>
       </div>
@@ -196,13 +228,11 @@ input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 13p
         <div class="w-row"><div class="w-head"><span class="w-lbl">Trip Attractor Proximity</span><span class="w-val" id="proxw-v">50%</span></div><input type="range" id="proxw" min="0" max="100" value="50" step="1" oninput="syncFWB()"/></div>
       </div>
       <div class="section">
-        <div class="sec-label">Attractor Radii of Influence (metres)</div>
-        <table class="mtx"><thead><tr><th>Type</th><th>Host R</th><th>Access R</th></tr></thead><tbody id="matrix-body"></tbody></table>
-      </div>
-      <div class="section">
         <div class="sec-label">PWN Grade Thresholds</div>
-        <div class="pwn-row"><div class="pwn-swatch" style="background:#FF5733"></div><span class="pwn-name">PWN 1</span><input type="range" style="flex:1" id="p1t" min="5" max="40" value="20" step="1" oninput="document.getElementById('p1v').textContent=this.value+'%'"/><span class="pwn-val" id="p1v">20%</span></div>
-        <div class="pwn-row"><div class="pwn-swatch" style="background:#FFC300"></div><span class="pwn-name">PWN 2</span><input type="range" style="flex:1" id="p2t" min="10" max="50" value="30" step="1" oninput="document.getElementById('p2v').textContent=this.value+'%'"/><span class="pwn-val" id="p2v">30%</span></div>
+        <div class="pwn-row"><div class="pwn-sw" style="background:#D0021B"></div><span class="pwn-nm">PWN 1</span><input type="range" style="flex:1" id="p1t" min="5" max="35" value="15" step="1" oninput="document.getElementById('p1v').textContent=this.value+'%'"/><span class="pwn-val" id="p1v">15%</span></div>
+        <div class="pwn-row"><div class="pwn-sw" style="background:#E87722"></div><span class="pwn-nm">PWN 2</span><input type="range" style="flex:1" id="p2t" min="10" max="40" value="25" step="1" oninput="document.getElementById('p2v').textContent=this.value+'%'"/><span class="pwn-val" id="p2v">25%</span></div>
+        <div class="pwn-row"><div class="pwn-sw" style="background:#F5C518"></div><span class="pwn-nm">PWN 3</span><input type="range" style="flex:1" id="p3t" min="10" max="40" value="30" step="1" oninput="document.getElementById('p3v').textContent=this.value+'%'"/><span class="pwn-val" id="p3v">30%</span></div>
+        <div style="font-size:10px;color:#484848;margin-top:2px">PWN 4 = remainder (spatial enclaves)</div>
       </div>
     </div>
 
@@ -210,9 +240,10 @@ input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 13p
     <div id="tab-layers" style="display:none">
       <div class="section">
         <div class="sec-label">PWN Layers</div>
-        <div class="tog-row on" id="tog-pwn1" onclick="togglePWN('pwn1')"><div class="tog-sw" style="background:#FF5733"></div>PWN 1 — Critical</div>
-        <div class="tog-row on" id="tog-pwn2" onclick="togglePWN('pwn2')"><div class="tog-sw" style="background:#FFC300"></div>PWN 2 — Important</div>
-        <div class="tog-row on" id="tog-pwn3" onclick="togglePWN('pwn3')"><div class="tog-sw" style="background:#58D68D"></div>PWN 3 — Secondary</div>
+        <div class="tog-row on" id="tog-pwn1" onclick="togglePWN('pwn1')"><div class="tog-sw" style="background:#D0021B"></div>PWN 1 — Critical Backbone</div>
+        <div class="tog-row on" id="tog-pwn2" onclick="togglePWN('pwn2')"><div class="tog-sw" style="background:#E87722"></div>PWN 2 — Secondary Corridor</div>
+        <div class="tog-row on" id="tog-pwn3" onclick="togglePWN('pwn3')"><div class="tog-sw" style="background:#F5C518"></div>PWN 3 — Local Feeder</div>
+        <div class="tog-row on" id="tog-pwn4" onclick="togglePWN('pwn4')"><div class="tog-sw" style="background:#1565C0"></div>PWN 4 — Spatial Enclave</div>
       </div>
       <div class="section">
         <div class="sec-label">Attractor Layers</div>
@@ -220,16 +251,19 @@ input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 13p
       </div>
       <div class="section">
         <div class="sec-label">Base Network</div>
-        <div class="tog-row on" id="tog-base" onclick="toggleBase()"><div class="tog-sw" style="background:#3a3a3a"></div>Street network</div>
+        <div class="tog-row on" id="tog-base" onclick="toggleBase()"><div class="tog-sw" style="background:#555"></div>Street network</div>
       </div>
     </div>
-
   </div>
+
   <div class="stats-footer" id="stats-footer">
-    <div class="stat"><div class="stat-val" id="s1" style="color:#FF5733">0</div><div class="stat-lbl">PWN 1</div></div>
-    <div class="stat"><div class="stat-val" id="s2" style="color:#FFC300">0</div><div class="stat-lbl">PWN 2</div></div>
-    <div class="stat"><div class="stat-val" id="s3" style="color:#58D68D">0</div><div class="stat-lbl">PWN 3</div></div>
-    <div class="stat"><div class="stat-val" id="st" style="color:#555">0</div><div class="stat-lbl">Segs</div></div>
+    <div class="stats-inner">
+      <div class="stat"><div class="stat-val" id="s1" style="color:#D0021B">0</div><div class="stat-lbl">PWN 1</div></div>
+      <div class="stat"><div class="stat-val" id="s2" style="color:#E87722">0</div><div class="stat-lbl">PWN 2</div></div>
+      <div class="stat"><div class="stat-val" id="s3" style="color:#F5C518">0</div><div class="stat-lbl">PWN 3</div></div>
+      <div class="stat"><div class="stat-val" id="s4" style="color:#1565C0">0</div><div class="stat-lbl">PWN 4</div></div>
+      <div class="stat"><div class="stat-val" id="st" style="color:#555">0</div><div class="stat-lbl">Segs</div></div>
+    </div>
   </div>
 </div>
 
@@ -242,29 +276,31 @@ input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 13p
   </div>
   <div class="legend" id="legend">
     <div class="leg-title">PWN Grade</div>
-    <div class="leg-row"><div class="leg-line" style="background:#FF5733"></div>PWN 1 — Critical</div>
-    <div class="leg-row"><div class="leg-line" style="background:#FFC300"></div>PWN 2 — Important</div>
-    <div class="leg-row"><div class="leg-line" style="background:#58D68D"></div>PWN 3 — Secondary</div>
+    <div class="leg-row" id="leg-pwn1"><div class="leg-line" style="background:#D0021B"></div>PWN 1 — Critical</div>
+    <div class="leg-row" id="leg-pwn2"><div class="leg-line" style="background:#E87722"></div>PWN 2 — Secondary</div>
+    <div class="leg-row" id="leg-pwn3"><div class="leg-line" style="background:#F5C518"></div>PWN 3 — Feeder</div>
+    <div class="leg-row" id="leg-pwn4"><div class="leg-line" style="background:#1565C0"></div>PWN 4 — Enclave</div>
+    <div class="leg-row conn-row" id="leg-conn" style="display:none"><div class="leg-line" style="background:#7aca7a;border-top:2px dashed #7aca7a;height:0"></div>Connector</div>
   </div>
-  <div class="boundary-legend" id="boundary-legend">
-    <div class="bl-row"><div class="bl-line" style="background:#c84a4a"></div>Study Area</div>
-    <div class="bl-row"><div class="bl-line" style="background:#378ADD"></div>Global Context</div>
+  <div class="bl" id="bl">
+    <div class="bl-row"><div class="bl-line" style="background:#D0021B"></div>Study Area</div>
+    <div class="bl-row"><div class="bl-line" style="background:#1565C0"></div>Global Context</div>
   </div>
   <div class="info-panel" id="info-panel">
     <span class="info-close" onclick="document.getElementById('info-panel').style.display='none'">×</span>
     <div class="info-seg-id" id="info-id">Segment —</div>
     <div class="info-grade" id="info-grade">—</div>
-    <div class="info-bar"><div class="info-bar-fill" id="info-bar-fill" style="width:0%"></div></div>
-    <div class="info-row"><span class="info-lbl">Final score</span><span class="info-val" id="iv-fin">—</span></div>
-    <hr class="info-divider">
-    <div class="info-row"><span class="info-lbl">SS score</span><span class="info-val" id="iv-ss">—</span></div>
-    <div class="info-row"><span class="info-lbl" style="padding-left:8px">↳ Connectivity</span><span class="info-val" id="iv-co">—</span></div>
-    <div class="info-row"><span class="info-lbl" style="padding-left:8px">↳ Local Int 400m</span><span class="info-val" id="iv-l4">—</span></div>
-    <div class="info-row"><span class="info-lbl" style="padding-left:8px">↳ Local Int 800m</span><span class="info-val" id="iv-l8">—</span></div>
-    <div class="info-row"><span class="info-lbl" style="padding-left:8px">↳ Global Int</span><span class="info-val" id="iv-gi">—</span></div>
-    <div class="info-row"><span class="info-lbl" style="padding-left:8px">↳ Choice 800m</span><span class="info-val" id="iv-ch">—</span></div>
-    <hr class="info-divider">
-    <div class="info-row"><span class="info-lbl">Proximity score</span><span class="info-val" id="iv-px">—</span></div>
+    <div class="ibar"><div class="ibar-fill" id="ibar-fill" style="width:0%"></div></div>
+    <div class="ir"><span class="il">Final score</span><span class="iv" id="iv-fin">—</span></div>
+    <hr class="idiv">
+    <div class="ir"><span class="il">SS score</span><span class="iv" id="iv-ss">—</span></div>
+    <div class="ir"><span class="il" style="padding-left:8px">↳ Connectivity</span><span class="iv" id="iv-co">—</span></div>
+    <div class="ir"><span class="il" style="padding-left:8px">↳ NAIN R800</span><span class="iv" id="iv-l8">—</span></div>
+    <div class="ir"><span class="il" style="padding-left:8px">↳ NAIN Rn</span><span class="iv" id="iv-gi">—</span></div>
+    <div class="ir"><span class="il" style="padding-left:8px">↳ NACH R1200</span><span class="iv" id="iv-ch">—</span></div>
+    <div class="ir"><span class="il" style="padding-left:8px">↳ NACH Rn</span><span class="iv" id="iv-gch">—</span></div>
+    <hr class="idiv">
+    <div class="ir"><span class="il">Proximity score</span><span class="iv" id="iv-px">—</span></div>
     <div id="iv-px-det"></div>
   </div>
   <div class="prog-overlay" id="prog-overlay">
@@ -278,398 +314,308 @@ input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 13p
   <div class="toast" id="toast"></div>
 </div>
 
-<!-- Scripts loaded at end of body to guarantee DOM + libraries ready -->
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6.5.0/turf.min.js"></script>
 <script>
-/* ── KML → GeoJSON CONVERTER ── */
-function kmlToGeoJSON(kmlText) {
-  const parser = new DOMParser();
-  const kml = parser.parseFromString(kmlText, 'text/xml');
-  const features = [];
-
-  function parseCoordString(str) {
-    return str.trim().split(/\s+/).map(pt => {
-      const parts = pt.split(',');
-      return [parseFloat(parts[0]), parseFloat(parts[1])];
-    }).filter(c => !isNaN(c[0]) && !isNaN(c[1]));
-  }
-
-  function getProps(pm) {
-    const name = pm.querySelector('name');
-    const desc = pm.querySelector('description');
-    return {
-      name: name ? name.textContent.trim() : '',
-      description: desc ? desc.textContent.trim() : ''
-    };
-  }
-
-  // Handle Placemarks
-  const placemarks = kml.querySelectorAll('Placemark');
-  placemarks.forEach(pm => {
-    const props = getProps(pm);
-
-    // Point
-    const point = pm.querySelector('Point coordinates');
-    if (point) {
-      const coords = parseCoordString(point.textContent);
-      if (coords.length > 0) {
-        features.push({ type: 'Feature', properties: props, geometry: { type: 'Point', coordinates: coords[0] } });
-      }
-    }
-
-    // LineString
-    const line = pm.querySelector('LineString coordinates');
-    if (line) {
-      const coords = parseCoordString(line.textContent);
-      if (coords.length >= 2) {
-        features.push({ type: 'Feature', properties: props, geometry: { type: 'LineString', coordinates: coords } });
-      }
-    }
-
-    // MultiLineString via MultiGeometry
-    const multiGeo = pm.querySelector('MultiGeometry');
-    if (multiGeo) {
-      const lineStrings = multiGeo.querySelectorAll('LineString coordinates');
-      if (lineStrings.length > 0) {
-        const allCoords = [];
-        lineStrings.forEach(ls => {
-          const coords = parseCoordString(ls.textContent);
-          if (coords.length >= 2) allCoords.push(coords);
-        });
-        if (allCoords.length > 0) {
-          features.push({ type: 'Feature', properties: props,
-            geometry: { type: 'MultiLineString', coordinates: allCoords } });
-        }
-      }
-      const points = multiGeo.querySelectorAll('Point coordinates');
-      points.forEach(p => {
-        const coords = parseCoordString(p.textContent);
-        if (coords.length > 0) {
-          features.push({ type: 'Feature', properties: props, geometry: { type: 'Point', coordinates: coords[0] } });
-        }
-      });
-    }
-
-    // Polygon
-    const poly = pm.querySelector('Polygon outerBoundaryIs LinearRing coordinates');
-    if (poly) {
-      const coords = parseCoordString(poly.textContent);
-      if (coords.length >= 3) {
-        if (coords[0][0] !== coords[coords.length-1][0] || coords[0][1] !== coords[coords.length-1][1]) {
-          coords.push(coords[0]);
-        }
-        features.push({ type: 'Feature', properties: props, geometry: { type: 'Polygon', coordinates: [coords] } });
-      }
-    }
-  });
-
-  return { type: 'FeatureCollection', features };
-}
-
-function parseFile(file, callback) {
-  const reader = new FileReader();
-  const name = file.name.toLowerCase();
-  reader.onload = function(e) {
-    try {
-      let gj;
-      if (name.endsWith('.kml')) {
-        gj = kmlToGeoJSON(e.target.result);
-      } else {
-        gj = JSON.parse(e.target.result);
-      }
-      callback(null, gj, file.name);
-    } catch(ex) {
-      callback('Error reading file — check it is valid GeoJSON or KML');
-    }
-  };
-  reader.readAsText(file);
-}
-</script>
-<script>
-/* ── STATE ── */
-const ATT_COLORS = ['#378ADD','#c8522a','#4a8a2a','#c89020','#8a4ab0','#c84a8a','#1a9a7a','#888888'];
-let cities = [], activeCity = null;
-let atts = [
-  { name:'Parks',          color:ATT_COLORS[2], data:null, count:0 },
-  { name:'Schools',        color:ATT_COLORS[0], data:null, count:0 },
-  { name:'Bus Stops',      color:ATT_COLORS[1], data:null, count:0 },
-  { name:'Metro Stations', color:ATT_COLORS[3], data:null, count:0 }
+/* ════════════════════════════════════════════════
+   STATE
+════════════════════════════════════════════════ */
+const ATT_COLORS=['#E87722','#1565C0','#2E7D32','#6A0DAD','#c84a8a','#1a9a7a','#888','#c8a96e'];
+let cities=[],activeCity=null;
+let atts=[
+  {name:'Parks',        color:ATT_COLORS[2],data:null,count:0,mode:'catchment',accessLen:100,radius:400},
+  {name:'Schools',      color:ATT_COLORS[0],data:null,count:0,mode:'corridor', accessLen:80, radius:200},
+  {name:'Bus Stops',    color:ATT_COLORS[1],data:null,count:0,mode:'direct',   accessLen:50, radius:80},
+  {name:'Metro Stations',color:ATT_COLORS[3],data:null,count:0,mode:'catchment',accessLen:150,radius:500}
 ];
-let netLayer=null, segLayer=null, attLayers={}, attVis={};
-let bounds={ study:null, ctx:null }, boundLayers={ study:null, ctx:null };
-let drawMode=null, drawPts=[], drawLine=null, drawPolygon=null, drawMarkers=[], drawPreviewLine=null;
-let pwnVis={ pwn1:true, pwn2:true, pwn3:true };
-let baseVis=true, segments=[];
-let editMarkers={ study:[], ctx:[] };
+let netLayer=null,segLayer=null,connLayer=null;
+let attLayers={},attVis={};
+let bounds={study:null,ctx:null},boundLayers={study:null,ctx:null};
+let drawMode=null,drawPts=[],drawLine=null,drawPoly=null,drawMarkers=[],drawPreview=null;
+let pwnVis={pwn1:true,pwn2:true,pwn3:true,pwn4:true};
+let baseVis=true,connectorsOn=false;
+let segments=[],editMarkers={study:[],ctx:[]};
 
-/* ── MAP ── */
-const map = L.map('map', { zoomControl:true, preferCanvas:true }).setView([12.97, 77.59], 12);
-// Dark-matter-lite: dark bg but with visible labels and roads
-L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png', {
-  attribution:'&copy; OpenStreetMap &copy; CARTO', maxZoom:19, opacity:0.72
+/* ════════════════════════════════════════════════
+   MAP INIT
+════════════════════════════════════════════════ */
+const map=L.map('map',{zoomControl:true,preferCanvas:true}).setView([12.97,77.59],13);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}{r}.png',{
+  attribution:'&copy; OpenStreetMap &copy; CARTO',maxZoom:19
 }).addTo(map);
-// Labels layer on top so they're always readable
-L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png', {
-  attribution:'', maxZoom:19, opacity:1, zIndex:10
+const labelsPane=map.createPane('labels');
+labelsPane.style.zIndex=650;
+labelsPane.style.pointerEvents='none';
+L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png',{
+  attribution:'',maxZoom:19,pane:'labels'
 }).addTo(map);
 
-/* ── INTERACTIVE NODE DRAWING ── */
-function getCol(type){ return type==='study'?'#c84a4a':'#378ADD'; }
-
-function updateDrawVisuals() {
-  if (drawLine)    { map.removeLayer(drawLine);    drawLine=null; }
-  if (drawPolygon) { map.removeLayer(drawPolygon); drawPolygon=null; }
-  const col = getCol(drawMode);
-  if (drawPts.length >= 3) {
-    drawPolygon = L.polygon(drawPts, { color:col, weight:2, fillColor:col, fillOpacity:0.08, dashArray:'6,3' }).addTo(map);
-  } else if (drawPts.length >= 2) {
-    drawLine = L.polyline(drawPts, { color:col, weight:2, dashArray:'6,3' }).addTo(map);
+/* ════════════════════════════════════════════════
+   KML PARSER
+════════════════════════════════════════════════ */
+function kmlToGeoJSON(txt){
+  const parser=new DOMParser(),kml=parser.parseFromString(txt,'text/xml');
+  const features=[];
+  function parseCoords(str){
+    return str.trim().split(/\s+/).map(p=>{
+      const pts=p.split(',');
+      return[parseFloat(pts[0]),parseFloat(pts[1])];
+    }).filter(c=>!isNaN(c[0])&&!isNaN(c[1]));
   }
-}
-
-function updatePreviewLine(latlng) {
-  if (!drawMode || drawPts.length===0) return;
-  if (drawPreviewLine) { map.removeLayer(drawPreviewLine); drawPreviewLine=null; }
-  const last = drawPts[drawPts.length-1];
-  drawPreviewLine = L.polyline([[last[0],last[1]], [latlng.lat,latlng.lng]], {
-    color:getCol(drawMode), weight:1.5, dashArray:'4,4', opacity:0.5
-  }).addTo(map);
-}
-
-function makeDrawMarker(pt, idx) {
-  const col = getCol(drawMode);
-  const m = L.circleMarker([pt[0],pt[1]], {
-    radius:7, fillColor:col, color:'#fff', weight:2, fillOpacity:1, zIndexOffset:1000
-  }).addTo(map);
-  m.on('mousedown', function(e) {
-    L.DomEvent.stopPropagation(e);
-    map.dragging.disable();
-    map.on('mousemove', function mv(e2) {
-      drawPts[idx]=[e2.latlng.lat,e2.latlng.lng];
-      m.setLatLng(e2.latlng);
-      updateDrawVisuals();
-    });
-    map.once('mouseup', function(){ map.dragging.enable(); map.off('mousemove'); });
+  kml.querySelectorAll('Placemark').forEach(pm=>{
+    const props={name:(pm.querySelector('name')||{}).textContent||''};
+    const pt=pm.querySelector('Point coordinates');
+    if(pt){const c=parseCoords(pt.textContent);if(c.length)features.push({type:'Feature',properties:props,geometry:{type:'Point',coordinates:c[0]}});}
+    const ln=pm.querySelector('LineString coordinates');
+    if(ln){const c=parseCoords(ln.textContent);if(c.length>=2)features.push({type:'Feature',properties:props,geometry:{type:'LineString',coordinates:c}});}
+    const mg=pm.querySelector('MultiGeometry');
+    if(mg){
+      mg.querySelectorAll('LineString coordinates').forEach(ls=>{const c=parseCoords(ls.textContent);if(c.length>=2)features.push({type:'Feature',properties:props,geometry:{type:'LineString',coordinates:c}});});
+      mg.querySelectorAll('Point coordinates').forEach(p=>{const c=parseCoords(p.textContent);if(c.length)features.push({type:'Feature',properties:props,geometry:{type:'Point',coordinates:c[0]}});});
+    }
+    const poly=pm.querySelector('Polygon outerBoundaryIs LinearRing coordinates');
+    if(poly){const c=parseCoords(poly.textContent);if(c.length>=3){if(c[0][0]!==c[c.length-1][0])c.push(c[0]);features.push({type:'Feature',properties:props,geometry:{type:'Polygon',coordinates:[c]}});}}
   });
-  m.on('dblclick', function(e) {
+  return{type:'FeatureCollection',features};
+}
+function parseFile(file,cb){
+  const r=new FileReader();
+  r.onload=e=>{
+    try{
+      const gj=file.name.toLowerCase().endsWith('.kml')?kmlToGeoJSON(e.target.result):JSON.parse(e.target.result);
+      cb(null,gj,file.name);
+    }catch(ex){cb('Error reading file — check it is valid GeoJSON or KML');}
+  };
+  r.readAsText(file);
+}
+
+/* ════════════════════════════════════════════════
+   DRAW BOUNDARIES — interactive node editor
+════════════════════════════════════════════════ */
+function getCol(t){return t==='study'?'#D0021B':'#1565C0';}
+function updateDrawVis(){
+  if(drawLine){map.removeLayer(drawLine);drawLine=null;}
+  if(drawPoly){map.removeLayer(drawPoly);drawPoly=null;}
+  const col=getCol(drawMode);
+  if(drawPts.length>=3) drawPoly=L.polygon(drawPts,{color:col,weight:2,fillColor:col,fillOpacity:.07,dashArray:'6,3'}).addTo(map);
+  else if(drawPts.length>=2) drawLine=L.polyline(drawPts,{color:col,weight:2,dashArray:'6,3'}).addTo(map);
+}
+function updatePreview(ll){
+  if(!drawMode||!drawPts.length)return;
+  if(drawPreview){map.removeLayer(drawPreview);drawPreview=null;}
+  const last=drawPts[drawPts.length-1];
+  drawPreview=L.polyline([[last[0],last[1]],[ll.lat,ll.lng]],{color:getCol(drawMode),weight:1.5,dashArray:'4,4',opacity:.5}).addTo(map);
+}
+function makeDrawMarker(pt,idx){
+  const col=getCol(drawMode);
+  const m=L.circleMarker([pt[0],pt[1]],{radius:7,fillColor:col,color:'#fff',weight:2,fillOpacity:1,zIndexOffset:1000}).addTo(map);
+  m.on('mousedown',e=>{
+    L.DomEvent.stopPropagation(e);map.dragging.disable();
+    map.on('mousemove',e2=>{drawPts[idx]=[e2.latlng.lat,e2.latlng.lng];m.setLatLng(e2.latlng);updateDrawVis();});
+    map.once('mouseup',()=>{map.dragging.enable();map.off('mousemove');});
+  });
+  m.on('dblclick',e=>{
     L.DomEvent.stopPropagation(e);
-    if (drawPts.length<=3){ showToast('Need at least 3 nodes'); return; }
-    drawPts.splice(idx,1);
-    rebuildDrawMarkers();
-    updateDrawVisuals();
+    if(drawPts.length<=3){showToast('Need at least 3 nodes');return;}
+    drawPts.splice(idx,1);rebuildDrawMarkers();updateDrawVis();
   });
   return m;
 }
-
-function rebuildDrawMarkers() {
-  drawMarkers.forEach(m=>map.removeLayer(m)); drawMarkers=[];
-  drawPts.forEach((pt,i)=>{ drawMarkers.push(makeDrawMarker(pt,i)); });
-}
-
-map.on('click', function(e) {
-  if (!drawMode) return;
-  const pt=[e.latlng.lat, e.latlng.lng];
-  drawPts.push(pt);
-  drawMarkers.push(makeDrawMarker(pt, drawPts.length-1));
-  updateDrawVisuals();
-  if (drawPts.length===3) showToast('Drag nodes to adjust · Double-click map to finish · Dbl-click node to delete');
+function rebuildDrawMarkers(){drawMarkers.forEach(m=>map.removeLayer(m));drawMarkers=[];drawPts.forEach((pt,i)=>drawMarkers.push(makeDrawMarker(pt,i)));}
+map.on('click',e=>{
+  if(!drawMode)return;
+  const pt=[e.latlng.lat,e.latlng.lng];
+  drawPts.push(pt);drawMarkers.push(makeDrawMarker(pt,drawPts.length-1));updateDrawVis();
+  if(drawPts.length===3)showToast('Drag nodes to adjust · Double-click map to finish');
 });
-
-map.on('mousemove', function(e) {
-  if (!drawMode || drawPts.length===0) return;
-  updatePreviewLine(e.latlng);
-});
-
-map.on('dblclick', function(e) {
-  if (!drawMode || drawPts.length<3) return;
-  finishDraw();
-  L.DomEvent.stopPropagation(e);
-  L.DomEvent.preventDefault(e);
-});
-
-function startDraw(type) {
-  if (drawMode===type){ cancelDraw(); return; }
-  cancelDraw();
-  drawMode=type; drawPts=[];
+map.on('mousemove',e=>{if(drawMode&&drawPts.length)updatePreview(e.latlng);});
+map.on('dblclick',e=>{if(!drawMode||drawPts.length<3)return;finishDraw();L.DomEvent.stopPropagation(e);L.DomEvent.preventDefault(e);});
+function startDraw(type){
+  if(drawMode===type){cancelDraw();return;}
+  cancelDraw();drawMode=type;drawPts=[];
   const btn=document.getElementById(type==='study'?'study-btn':'ctx-btn');
-  btn.classList.add('drawing');
-  btn.textContent='Double-click to finish';
+  btn.classList.add('drawing');btn.textContent='Double-click to finish';
   map.getContainer().style.cursor='crosshair';
-  showToast('Click to add nodes · Drag nodes to move · Double-click to finish');
+  showToast('Click to add nodes · Drag to move · Double-click to finish');
 }
-
-function cancelDraw() {
-  if (drawLine)    { map.removeLayer(drawLine);    drawLine=null; }
-  if (drawPolygon) { map.removeLayer(drawPolygon); drawPolygon=null; }
-  if (drawPreviewLine){ map.removeLayer(drawPreviewLine); drawPreviewLine=null; }
-  drawMarkers.forEach(m=>map.removeLayer(m)); drawMarkers=[];
-  drawPts=[];
-  if (drawMode) {
+function cancelDraw(){
+  [drawLine,drawPoly,drawPreview].forEach(l=>{if(l)map.removeLayer(l);});
+  drawLine=drawPoly=drawPreview=null;
+  drawMarkers.forEach(m=>map.removeLayer(m));drawMarkers=[];drawPts=[];
+  if(drawMode){
     const id=drawMode==='study'?'study-btn':'ctx-btn';
     document.getElementById(id).classList.remove('drawing');
     document.getElementById(id).textContent=drawMode==='study'?'Draw Study Area':'Draw Global Context';
   }
-  drawMode=null;
-  map.getContainer().style.cursor='';
+  drawMode=null;map.getContainer().style.cursor='';
 }
-
-function addEditableNodes(type, pts) {
+function addEditNodes(type,pts){
   const col=getCol(type);
-  editMarkers[type].forEach(m=>map.removeLayer(m)); editMarkers[type]=[];
+  editMarkers[type].forEach(m=>map.removeLayer(m));editMarkers[type]=[];
   pts.forEach((pt,idx)=>{
-    const m=L.circleMarker([pt[0],pt[1]],{
-      radius:6, fillColor:col, color:'#fff', weight:2, fillOpacity:0.9, zIndexOffset:900
-    }).addTo(map);
-    m.on('mousedown',function(e){
-      L.DomEvent.stopPropagation(e);
-      map.dragging.disable();
-      map.on('mousemove',function mv(e2){
-        pts[idx]=[e2.latlng.lat,e2.latlng.lng];
-        m.setLatLng(e2.latlng);
-        if (boundLayers[type]) map.removeLayer(boundLayers[type]);
-        boundLayers[type]=L.polygon(pts,{color:col,weight:2,fillColor:col,fillOpacity:0.06,dashArray:type==='study'?'6,3':'4,2'}).addTo(map);
+    const m=L.circleMarker([pt[0],pt[1]],{radius:6,fillColor:col,color:'#fff',weight:2,fillOpacity:.9,zIndexOffset:900}).addTo(map);
+    m.on('mousedown',e=>{
+      L.DomEvent.stopPropagation(e);map.dragging.disable();
+      map.on('mousemove',e2=>{
+        pts[idx]=[e2.latlng.lat,e2.latlng.lng];m.setLatLng(e2.latlng);
+        if(boundLayers[type])map.removeLayer(boundLayers[type]);
+        boundLayers[type]=L.polygon(pts,{color:col,weight:2,fillColor:col,fillOpacity:.06,dashArray:type==='study'?'6,3':'4,2'}).addTo(map);
         bounds[type]=pts.map(p=>[p[1],p[0]]);
       });
-      map.once('mouseup',function(){ map.dragging.enable(); map.off('mousemove'); });
+      map.once('mouseup',()=>{map.dragging.enable();map.off('mousemove');});
     });
     editMarkers[type].push(m);
   });
 }
-
-function finishDraw() {
-  const type=drawMode, col=getCol(type);
-  if (drawLine)    { map.removeLayer(drawLine);    drawLine=null; }
-  if (drawPolygon) { map.removeLayer(drawPolygon); drawPolygon=null; }
-  if (drawPreviewLine){ map.removeLayer(drawPreviewLine); drawPreviewLine=null; }
-  drawMarkers.forEach(m=>map.removeLayer(m)); drawMarkers=[];
-  if (boundLayers[type]) map.removeLayer(boundLayers[type]);
-  const savedPts=[...drawPts.map(p=>[p[0],p[1]])];
-  boundLayers[type]=L.polygon(savedPts,{color:col,weight:2,fillColor:col,fillOpacity:0.06,dashArray:type==='study'?'6,3':'4,2'}).addTo(map);
+function finishDraw(){
+  const type=drawMode,col=getCol(type);
+  [drawLine,drawPoly,drawPreview].forEach(l=>{if(l)map.removeLayer(l);});
+  drawLine=drawPoly=drawPreview=null;
+  drawMarkers.forEach(m=>map.removeLayer(m));drawMarkers=[];
+  if(boundLayers[type])map.removeLayer(boundLayers[type]);
+  const savedPts=drawPts.map(p=>[p[0],p[1]]);
+  boundLayers[type]=L.polygon(savedPts,{color:col,weight:2,fillColor:col,fillOpacity:.06,dashArray:type==='study'?'6,3':'4,2'}).addTo(map);
   bounds[type]=savedPts.map(p=>[p[1],p[0]]);
-  addEditableNodes(type, savedPts);
+  addEditNodes(type,savedPts);
   cancelDraw();
   document.getElementById('clear-btn').style.display='block';
-  document.getElementById('boundary-legend').style.display='block';
+  document.getElementById('bl').style.display='block';
   showToast(type==='study'?'Study area set — drag nodes to edit':'Global context set — drag nodes to edit');
 }
-
-function clearBounds() {
+function clearBounds(){
   ['study','ctx'].forEach(t=>{
-    if (boundLayers[t]){ map.removeLayer(boundLayers[t]); boundLayers[t]=null; }
-    editMarkers[t].forEach(m=>map.removeLayer(m)); editMarkers[t]=[];
+    if(boundLayers[t]){map.removeLayer(boundLayers[t]);boundLayers[t]=null;}
+    editMarkers[t].forEach(m=>map.removeLayer(m));editMarkers[t]=[];
     bounds[t]=null;
     document.getElementById(t==='study'?'study-btn':'ctx-btn').textContent=t==='study'?'Draw Study Area':'Draw Global Context';
   });
   cancelDraw();
   document.getElementById('clear-btn').style.display='none';
-  document.getElementById('boundary-legend').style.display='none';
+  document.getElementById('bl').style.display='none';
 }
 
-/* ── TABS ── */
-function switchTab(t) {
-  ['data','weights','layers'].forEach(x => document.getElementById('tab-'+x).style.display = x===t?'block':'none');
-  document.querySelectorAll('.tab-btn').forEach((el,i) => el.classList.toggle('active', ['data','weights','layers'][i]===t));
+/* ════════════════════════════════════════════════
+   TABS / UI
+════════════════════════════════════════════════ */
+function switchTab(t){
+  ['data','weights','layers'].forEach(x=>document.getElementById('tab-'+x).style.display=x===t?'block':'none');
+  document.querySelectorAll('.tab').forEach((el,i)=>el.classList.toggle('active',['data','weights','layers'][i]===t));
 }
-
-/* ── CITY ── */
-function addCity() {
-  const inp=document.getElementById('city-input'), name=inp.value.trim();
-  if (!name) { showToast('Enter a city name'); return; }
-  if (cities.find(c=>c.name===name)) { showToast('City already exists'); return; }
-  cities.push({ name, network:null });
-  inp.value='';
-  renderCities(); setActive(cities.length-1);
+function addCity(){
+  const inp=document.getElementById('city-input'),name=inp.value.trim();
+  if(!name){showToast('Enter a city name');return;}
+  if(cities.find(c=>c.name===name)){showToast('Already exists');return;}
+  cities.push({name,network:null});inp.value='';
+  renderCities();setActive(cities.length-1);
 }
-function setActive(i) {
-  activeCity=i; renderCities();
-  const ok = activeCity!==null && cities[activeCity];
-  document.getElementById('main-data').style.display = ok?'block':'none';
-  document.getElementById('no-city').style.display   = ok?'none':'block';
-  renderAtts(); renderMatrix(); renderAttLayers();
+function setActive(i){
+  activeCity=i;renderCities();
+  const ok=activeCity!==null&&cities[activeCity];
+  document.getElementById('main-data').style.display=ok?'block':'none';
+  document.getElementById('no-city').style.display=ok?'none':'block';
+  renderAtts();renderAttLayers();
 }
-function removeCity(i,e) {
-  e.stopPropagation(); cities.splice(i,1);
-  activeCity = cities.length>0 ? Math.min(activeCity,cities.length-1) : null;
+function removeCity(i,e){
+  e.stopPropagation();cities.splice(i,1);
+  activeCity=cities.length>0?Math.min(activeCity,cities.length-1):null;
   renderCities();
-  if (activeCity!==null) setActive(activeCity);
-  else { document.getElementById('main-data').style.display='none'; document.getElementById('no-city').style.display='block'; }
+  if(activeCity!==null)setActive(activeCity);
+  else{document.getElementById('main-data').style.display='none';document.getElementById('no-city').style.display='block';}
 }
-function renderCities() {
-  document.getElementById('city-list').innerHTML = cities.map((c,i) => `
+function renderCities(){
+  document.getElementById('city-list').innerHTML=cities.map((c,i)=>`
     <div class="city-chip ${i===activeCity?'active':''}" onclick="setActive(${i})">
-      <span style="font-size:11px;color:#484848">◎</span>
-      <span class="city-name">${c.name}</span>
-      ${c.network?'<span class="city-net">NET</span>':''}
-      <span class="city-rm" onclick="removeCity(${i},event)">×</span>
+      <span style="font-size:10px;color:#484848">◎</span>
+      <span class="cname">${c.name}</span>
+      ${c.network?'<span style="font-size:9px;color:#4a8a2a;font-family:monospace">NET</span>':''}
+      <span class="crm" onclick="removeCity(${i},event)">×</span>
     </div>`).join('');
 }
-
-/* ── NETWORK ── */
-function loadNetwork(input) {
-  const file=input.files[0]; if (!file) return;
-  parseFile(file, function(err, gj, fname) {
-    if (err) { showToast(err); return; }
+function loadNetwork(input){
+  const file=input.files[0];if(!file)return;
+  parseFile(file,(err,gj,fname)=>{
+    if(err){showToast(err);return;}
     cities[activeCity].network=gj;
     const ct=gj.features?gj.features.length:0;
     document.getElementById('net-zone').classList.add('loaded');
-    const t=document.getElementById('net-title');
-    t.textContent='✓ '+ct+' features loaded'; t.className='uz-title ok';
-    document.getElementById('net-sub').textContent=fname;
-    if (netLayer) map.removeLayer(netLayer);
-    netLayer=L.geoJSON(gj,{style:{color:'#4a4a52',weight:1,opacity:0.85}}).addTo(map);
-    try { map.fitBounds(netLayer.getBounds(),{padding:[30,30]}); } catch(ex) {}
-    renderCities(); showToast('Network loaded — '+ct+' features');
+    const t=document.getElementById('net-t');t.textContent='✓ '+ct+' features loaded';t.className='uz-t ok';
+    document.getElementById('net-s').textContent=fname;
+    if(netLayer)map.removeLayer(netLayer);
+    netLayer=L.geoJSON(gj,{style:{color:'#aaaaaa',weight:0.8,opacity:0.5}}).addTo(map);
+    try{map.fitBounds(netLayer.getBounds(),{padding:[30,30]});}catch(ex){}
+    renderCities();showToast('Network loaded — '+ct+' features');
   });
 }
 
-/* ── ATTRACTORS ── */
-function addAttType() {
-  const inp=document.getElementById('new-att-name'), name=inp.value.trim();
-  if (!name) return;
-  if (atts.find(a=>a.name.toLowerCase()===name.toLowerCase())) { showToast('Type already exists'); return; }
-  atts.push({ name, color:ATT_COLORS[atts.length%ATT_COLORS.length], data:null, count:0 });
-  inp.value=''; renderAtts(); renderMatrix(); renderAttLayers();
+/* ════════════════════════════════════════════════
+   ATTRACTOR MANAGEMENT
+════════════════════════════════════════════════ */
+function addAttType(){
+  const inp=document.getElementById('new-att'),name=inp.value.trim();
+  if(!name)return;
+  if(atts.find(a=>a.name.toLowerCase()===name.toLowerCase())){showToast('Already exists');return;}
+  atts.push({name,color:ATT_COLORS[atts.length%ATT_COLORS.length],data:null,count:0,mode:'corridor',accessLen:100,radius:300});
+  inp.value='';renderAtts();renderAttLayers();
 }
-function removeAtt(i) {
-  if (attLayers[i]) { map.removeLayer(attLayers[i]); delete attLayers[i]; }
-  atts.splice(i,1); renderAtts(); renderMatrix(); renderAttLayers();
+function removeAtt(i){
+  if(attLayers[i]){map.removeLayer(attLayers[i]);delete attLayers[i];}
+  atts.splice(i,1);renderAtts();renderAttLayers();
 }
-function loadAttFile(i,input) {
-  const file=input.files[0]; if (!file) return;
-  parseFile(file, function(err, gj, fname) {
-    if (err) { showToast(err); return; }
-    atts[i].data=gj; atts[i].count=gj.features?gj.features.length:0;
-    if (attLayers[i]) map.removeLayer(attLayers[i]);
+function loadAttFile(i,input){
+  const file=input.files[0];if(!file)return;
+  parseFile(file,(err,gj,fname)=>{
+    if(err){showToast(err);return;}
+    atts[i].data=gj;atts[i].count=gj.features?gj.features.length:0;
+    if(attLayers[i])map.removeLayer(attLayers[i]);
     attLayers[i]=L.geoJSON(gj,{
-      pointToLayer:function(f,ll){ return L.circleMarker(ll,{radius:4,fillColor:atts[i].color,color:'#0d0d0d',weight:1,fillOpacity:0.9}); },
+      pointToLayer:(f,ll)=>L.circleMarker(ll,{radius:4,fillColor:atts[i].color,color:'#fff',weight:1.5,fillOpacity:.9}),
       style:{color:atts[i].color,weight:2}
     }).addTo(map);
-    attVis[i]=true; renderAtts(); renderAttLayers();
+    attVis[i]=true;renderAtts();renderAttLayers();
     showToast(atts[i].name+' loaded — '+atts[i].count+' features');
   });
 }
-function renderAtts() {
-  document.getElementById('att-list').innerHTML = atts.map((a,i) => `
+function toggleAttConfig(i){
+  const el=document.getElementById('att-cfg-'+i);
+  el.classList.toggle('open');
+}
+function renderAtts(){
+  document.getElementById('att-list').innerHTML=atts.map((a,i)=>`
     <div class="att-item">
-      <div class="att-dot" style="background:${a.color}"></div>
-      <span class="att-name">${a.name}</span>
-      ${a.count?`<span class="att-count">${a.count}</span>`:''}
-      <input type="file" accept=".geojson,.json,.kml" id="att-file-${i}" style="display:none" onchange="loadAttFile(${i},this)"/>
-      <span class="att-upload-lbl" onclick="document.getElementById('att-file-${i}').click()">${a.data?'Replace':'Upload'}</span>
-      <span class="att-rm" onclick="removeAtt(${i})">×</span>
+      <div class="att-head" onclick="toggleAttConfig(${i})">
+        <div class="att-dot" style="background:${a.color}"></div>
+        <span class="att-name">${a.name}</span>
+        ${a.count?`<span class="att-count">${a.count}</span>`:''}
+        <div class="att-actions" onclick="event.stopPropagation()">
+          <input type="file" accept=".geojson,.json,.kml" id="att-file-${i}" style="display:none" onchange="loadAttFile(${i},this)"/>
+          <span class="att-ul" onclick="document.getElementById('att-file-${i}').click()">${a.data?'Replace':'Upload'}</span>
+          <span class="att-rm" onclick="removeAtt(${i})">×</span>
+        </div>
+      </div>
+      <div class="att-config" id="att-cfg-${i}">
+        <div class="att-cfg-row">
+          <span class="att-cfg-lbl">Mode</span>
+          <select class="mode-sel" id="att-mode-${i}" onchange="atts[${i}].mode=this.value">
+            <option value="direct"    ${a.mode==='direct'   ?'selected':''}>Direct Access only</option>
+            <option value="corridor"  ${a.mode==='corridor' ?'selected':''}>Approach Corridor</option>
+            <option value="catchment" ${a.mode==='catchment'?'selected':''}>Network Catchment</option>
+          </select>
+        </div>
+        <div class="att-cfg-row">
+          <span class="att-cfg-lbl">Access length (m)</span>
+          <input type="number" value="${a.accessLen}" min="20" max="300" step="10" id="att-al-${i}" style="width:64px" oninput="atts[${i}].accessLen=+this.value"/>
+          <span style="font-size:10px;color:#444">from nearest road</span>
+        </div>
+        <div class="att-cfg-row">
+          <span class="att-cfg-lbl">Influence radius (m)</span>
+          <input type="number" value="${a.radius}" min="50" max="1000" step="25" id="att-r-${i}" style="width:64px" oninput="atts[${i}].radius=+this.value"/>
+          <span style="font-size:10px;color:#444">network distance</span>
+        </div>
+      </div>
     </div>`).join('');
 }
-function renderMatrix() {
-  document.getElementById('matrix-body').innerHTML = atts.map((a,i) => `
-    <tr>
-      <td><span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:${a.color};margin-right:5px;vertical-align:middle"></span>${a.name}</td>
-      <td><input type="number" value="${a.hostR||100}" min="20" max="500" step="10" id="hr-${i}"/></td>
-      <td><input type="number" value="${a.accessR||200}" min="50" max="1000" step="10" id="ar-${i}"/></td>
-    </tr>`).join('');
-}
-function renderAttLayers() {
-  document.getElementById('att-layer-list').innerHTML = atts.map((a,i) => a.data?`
+function renderAttLayers(){
+  document.getElementById('att-layer-list').innerHTML=atts.map((a,i)=>a.data?`
     <div class="tog-row ${attVis[i]!==false?'on':''}" id="tog-att-${i}" onclick="toggleAtt(${i})">
       <div class="tog-sw" style="background:${a.color}"></div>
       ${a.name} <span style="color:#383838;font-size:9px;margin-left:3px">(${a.count})</span>
@@ -677,513 +623,521 @@ function renderAttLayers() {
   ).join('');
 }
 
-/* ── WEIGHTS ── */
-function syncSSW() {
-  const keys=['conn','li4','li8','gi','ch'];
+/* ════════════════════════════════════════════════
+   WEIGHTS UI
+════════════════════════════════════════════════ */
+function syncSSW(){
+  const keys=['conn','li8','gi','ch','gch'];
   const vals=keys.map(k=>parseInt(document.getElementById('w-'+k).value));
   const tot=vals.reduce((s,v)=>s+v,0);
   keys.forEach((k,i)=>document.getElementById('wv-'+k).textContent=vals[i]+'%');
   const tel=document.getElementById('ss-total');
-  tel.textContent='Total: '+tot+'%'; tel.className='ss-total'+(tot!==100?' warn':'');
+  tel.textContent='Total: '+tot+'%';tel.className='ss-total'+(tot!==100?' warn':'');
 }
-function syncFW() {
-  const v=parseInt(document.getElementById('ssfw').value);
-  document.getElementById('ssfw-v').textContent=v+'%';
-  document.getElementById('proxw').value=100-v;
-  document.getElementById('proxw-v').textContent=(100-v)+'%';
-}
-function syncFWB() {
-  const v=parseInt(document.getElementById('proxw').value);
-  document.getElementById('proxw-v').textContent=v+'%';
-  document.getElementById('ssfw').value=100-v;
-  document.getElementById('ssfw-v').textContent=(100-v)+'%';
-}
+function syncFW(){const v=parseInt(document.getElementById('ssfw').value);document.getElementById('ssfw-v').textContent=v+'%';document.getElementById('proxw').value=100-v;document.getElementById('proxw-v').textContent=(100-v)+'%';}
+function syncFWB(){const v=parseInt(document.getElementById('proxw').value);document.getElementById('proxw-v').textContent=v+'%';document.getElementById('ssfw').value=100-v;document.getElementById('ssfw-v').textContent=(100-v)+'%';}
 
-/* ── LAYER TOGGLES ── */
-function togglePWN(layer) {
+/* ════════════════════════════════════════════════
+   LAYER TOGGLES
+════════════════════════════════════════════════ */
+function togglePWN(layer){
   pwnVis[layer]=!pwnVis[layer];
   document.getElementById('tog-'+layer).classList.toggle('on',pwnVis[layer]);
-  if (!segLayer) return;
-  segLayer.eachLayer(l=>{ if(l._pwn===layer) l.setStyle({opacity:pwnVis[layer]?1:0,interactive:pwnVis[layer]}); });
+  if(!segLayer)return;
+  segLayer.eachLayer(l=>{if(l._pwn===layer)l.setStyle({opacity:pwnVis[layer]?1:0,interactive:pwnVis[layer]});});
 }
-function toggleAtt(i) {
+function toggleAtt(i){
   attVis[i]=!attVis[i];
   document.getElementById('tog-att-'+i).classList.toggle('on',attVis[i]);
-  if (attLayers[i]) { attVis[i]?map.addLayer(attLayers[i]):map.removeLayer(attLayers[i]); }
-  // Re-grade from cached scores if analysis has been run
-  if (segments.length>0) reGradePWN();
+  if(attLayers[i]){attVis[i]?map.addLayer(attLayers[i]):map.removeLayer(attLayers[i]);}
+  if(segments.length>0)reGrade();
 }
-
-function reGradePWN() {
-  const ssW=parseInt(document.getElementById('ssfw').value)/100;
-  const proxW=1-ssW;
-  const p1t=parseInt(document.getElementById('p1t').value)/100;
-  const p2t=parseInt(document.getElementById('p2t').value)/100;
-  const wKeys=['conn','li4','li8','gi','ch'];
-  const wRaw=wKeys.map(k=>parseInt(document.getElementById('w-'+k).value));
-  const wTot=wRaw.reduce((s,v)=>s+v,0)||100;
-  const wN=wRaw.map(v=>v/wTot);
-
-  // Recompute proximity using only visible attractors
-  segments.forEach(s=>{
-    let tot=0;
-    atts.forEach((a,i)=>{
-      if (!a.data||!a.data.features) return;
-      // Only count if attractor layer is visible
-      const score=attVis[i]!==false ? (s._pxDet[a.name]||0) : 0;
-      tot+=score;
-    });
-    s._pxRaw2=tot;
-  });
-  const maxPx=Math.max(1,...segments.map(s=>s._pxRaw2));
-  segments.forEach(s=>{ s._px2=s._pxRaw2/maxPx; });
-
-  // Recompute final score and re-grade
-  segments.forEach(s=>{
-    s._ss=s._coN*wN[0]+s._li4*wN[1]+s._li8*wN[2]+s._gi*wN[3]+s._ch*wN[4];
-    s._final=s._ss*ssW+(s._px2!==undefined?s._px2:s._px)*proxW;
-  });
-  const sorted=[...segments].sort((a,b)=>b._final-a._final);
-  const e1=Math.floor(sorted.length*p1t), e2=Math.floor(sorted.length*(p1t+p2t));
-  sorted.forEach((s,i)=>{ s._pwn=i<e1?'pwn1':i<e2?'pwn2':'pwn3'; });
-  // Apply connectivity gate
-  segments.forEach(s=>{ if (s._co===0 && s._pwn!=='pwn3') { s._pwn='pwn3'; s._gated=true; } else { s._gated=false; } });
-  // Apply loop closing
-  closeLoops(segments);
-  // Re-render
-  renderSegs(segments);
-  // Update stats
-  const c1=segments.filter(s=>s._pwn==='pwn1').length;
-  const c2=segments.filter(s=>s._pwn==='pwn2').length;
-  const c3=segments.filter(s=>s._pwn==='pwn3').length;
-  document.getElementById('s1').textContent=c1;
-  document.getElementById('s2').textContent=c2;
-  document.getElementById('s3').textContent=c3;
-  showToast('PWN re-graded — '+c1+' critical, '+c2+' important');
-}
-function toggleBase() {
+function toggleBase(){
   baseVis=!baseVis;
   document.getElementById('tog-base').classList.toggle('on',baseVis);
-  if (netLayer) { baseVis?map.addLayer(netLayer):map.removeLayer(netLayer); }
+  if(netLayer){baseVis?map.addLayer(netLayer):map.removeLayer(netLayer);}
 }
 
-/* ── PROGRESS ── */
-function setP(pct,msg) {
+/* ════════════════════════════════════════════════
+   PROGRESS
+════════════════════════════════════════════════ */
+function setP(pct,msg){
   document.getElementById('prog-fill').style.width=pct+'%';
   document.getElementById('prog-step').textContent=msg;
   document.getElementById('prog-pct').textContent=Math.round(pct)+'%';
 }
-
-/* ── ANALYSIS ── */
-async function runAnalysis() {
-  if (activeCity===null) { showToast('Select a city first'); return; }
-  const city=cities[activeCity];
-  if (!city.network) { showToast('Upload a street network first'); return; }
-  const ssW=parseInt(document.getElementById('ssfw').value)/100;
-  const proxW=1-ssW;
-  const p1t=parseInt(document.getElementById('p1t').value)/100;
-  const p2t=parseInt(document.getElementById('p2t').value)/100;
-  const wKeys=['conn','li4','li8','gi','ch'];
-  const wRaw=wKeys.map(k=>parseInt(document.getElementById('w-'+k).value));
-  const wTot=wRaw.reduce((s,v)=>s+v,0)||100;
-  const wN=wRaw.map(v=>v/wTot);
-  const radii=atts.map((a,i)=>({ name:a.name, data:a.data,
-    hostR:parseFloat(document.getElementById('hr-'+i)?.value||100),
-    accessR:parseFloat(document.getElementById('ar-'+i)?.value||200) }));
-
-  document.getElementById('prog-overlay').style.display='flex';
-  setP(3,'Preparing data...'); await sleep(30);
-
-  let studyNet=JSON.parse(JSON.stringify(city.network)), ctxNet=studyNet;
-  if (bounds.study) { setP(8,'Clipping to study area...'); await sleep(20); studyNet=clipNet(studyNet,bounds.study); }
-  if (bounds.ctx)   { setP(13,'Clipping to global context...'); await sleep(20); ctxNet=clipNet(JSON.parse(JSON.stringify(city.network)),bounds.ctx); }
-  else ctxNet=studyNet;
-
-  setP(18,'Segmenting study roads at 100m...'); await sleep(30);
-  const sSegs=segRoads(studyNet,100);
-  if (sSegs.length===0) { document.getElementById('prog-overlay').style.display='none'; showToast('No segments found — check file or boundary'); return; }
-
-  setP(26,'Segmenting context roads...'); await sleep(20);
-  const cSegs=bounds.ctx?segRoads(ctxNet,100):sSegs;
-
-  setP(33,'Building angular dual graph...'); await sleep(20);
-  const sGraphData=buildGraph(sSegs);
-  const cGraphData=bounds.ctx?buildGraph(cSegs):sGraphData;
-
-  // Connectivity (simple neighbour count)
-  setP(40,'Connectivity...'); await sleep(10);
-  const maxConn=Math.max(1,...sSegs.map((s,i)=>sGraphData.graph[i]?sGraphData.graph[i].length:0));
-  sSegs.forEach((s,i)=>{ s._co=sGraphData.graph[i]?sGraphData.graph[i].length:0; s._coN=s._co/maxConn; });
-
-  // Full angular Space Syntax — NAIN R400, NAIN R800, NAIN Rn, NACH R800
-  setP(44,'Angular SS: local integration 400m...'); await sleep(20);
-  // Run full space syntax computation (synchronous but batched)
-  computeSpaceSyntax(sSegs, cSegs, sGraphData, cGraphData);
-  setP(78,'Space syntax complete...');
-
-  setP(82,'Proximity scoring...'); await sleep(30);
-  calcProximity(sSegs,radii);
-
-  setP(89,'Grading PWN...'); await sleep(20);
-  sSegs.forEach(s=>{ s._ss=s._coN*wN[0]+s._li4*wN[1]+s._li8*wN[2]+s._gi*wN[3]+s._ch*wN[4]; s._final=s._ss*ssW+s._px*proxW; });
-  const sorted=[...sSegs].sort((a,b)=>b._final-a._final);
-  const e1=Math.floor(sorted.length*p1t), e2=Math.floor(sorted.length*(p1t+p2t));
-  sorted.forEach((s,i)=>{ s._pwn=i<e1?'pwn1':i<e2?'pwn2':'pwn3'; });
-  // Connectivity gate: isolated segments (zero neighbours) cannot be PWN 1 or PWN 2
-  sSegs.forEach((s,i)=>{ if (s._co===0 && s._pwn!=='pwn3') { s._pwn='pwn3'; s._gated=true; } });
-
-  setP(94,'Closing loops...'); await sleep(20);
-  closeLoops(sSegs);
-  setP(98,'Rendering...'); await sleep(20);
-  renderSegs(sSegs); segments=sSegs;
-
-  const c1=sSegs.filter(s=>s._pwn==='pwn1').length;
-  const c2=sSegs.filter(s=>s._pwn==='pwn2').length;
-  const c3=sSegs.filter(s=>s._pwn==='pwn3').length;
-  document.getElementById('s1').textContent=c1;
-  document.getElementById('s2').textContent=c2;
-  document.getElementById('s3').textContent=c3;
-  document.getElementById('st').textContent=sSegs.length;
-  document.getElementById('stats-footer').style.display='flex';
-  document.getElementById('legend').style.display='block';
-  setP(100,'Complete'); await sleep(300);
-  document.getElementById('prog-overlay').style.display='none';
-  showToast('Analysis complete — '+sSegs.length+' segments graded');
+function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
+function showToast(msg){
+  const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'),2800);
 }
 
-/* ── SPATIAL ── */
-function clipNet(net,bCoords) {
-  const ring=[...bCoords,bCoords[0]], poly=turf.polygon([ring]), out=[];
-  for (const f of (net.features||[])) {
-    try {
-      if (!f.geometry) continue;
-      const lines=f.geometry.type==='MultiLineString'?f.geometry.coordinates.map(c=>turf.lineString(c)):f.geometry.type==='LineString'?[f]:[];
-      for (const ln of lines) {
-        const cl=turf.bboxClip(ln,turf.bbox(poly));
-        if (cl&&cl.geometry&&cl.geometry.coordinates.length>=2) out.push(cl);
-      }
-    } catch(ex) {}
-  }
-  return turf.featureCollection(out);
-}
-
-function segRoads(net,segLen) {
-  const segs=[]; let id=0;
-  for (const f of (net.features||[])) {
-    if (!f.geometry) continue;
+/* ════════════════════════════════════════════════
+   ROAD SEGMENTATION
+════════════════════════════════════════════════ */
+function segRoads(net,segLen){
+  const segs=[];let id=0;
+  for(const f of(net.features||[])){
+    if(!f.geometry)continue;
     const lines=f.geometry.type==='MultiLineString'?f.geometry.coordinates.map(c=>turf.lineString(c)):f.geometry.type==='LineString'?[f]:[];
-    for (const ln of lines) {
-      try {
-        const l=turf.length(ln,{units:'meters'}); if (l<2) continue;
-        const n=Math.max(1,Math.round(l/segLen)), step=l/n;
-        for (let j=0;j<n;j++) {
+    for(const ln of lines){
+      try{
+        const l=turf.length(ln,{units:'meters'});if(l<2)continue;
+        const n=Math.max(1,Math.round(l/segLen)),step=l/n;
+        for(let j=0;j<n;j++){
           const s=turf.along(ln,j*step,{units:'meters'});
           const e=turf.along(ln,Math.min((j+1)*step,l),{units:'meters'});
-          if (!s||!e) continue;
+          if(!s||!e)continue;
           const seg=turf.lineString([s.geometry.coordinates,e.geometry.coordinates]);
-          seg._id=id++; seg._co=0; seg._coN=0; seg._li4=0; seg._li8=0;
-          seg._gi=0; seg._ch=0; seg._ss=0; seg._px=0; seg._final=0; seg._pxRaw=0; seg._pxDet={};
+          seg._id=id++;
+          // midpoint for proximity calcs
+          seg._mid=[(s.geometry.coordinates[0]+e.geometry.coordinates[0])/2,(s.geometry.coordinates[1]+e.geometry.coordinates[1])/2];
+          seg._len=turf.length(seg,{units:'meters'});
+          // SS scores
+          seg._co=0;seg._coN=0;seg._li8=0;seg._gi=0;seg._ch=0;seg._gch=0;seg._ss=0;
+          // proximity
+          seg._px=0;seg._pxRaw=0;seg._pxDet={};
+          seg._final=0;seg._pwn='pwn4';
           segs.push(seg);
         }
-      } catch(ex) {}
+      }catch(ex){}
     }
   }
   return segs;
 }
 
-/* ════════════════════════════════════════════════════════
-   SPACE SYNTAX ENGINE — Angular Segment Analysis
-   Based on Turner (2001), Hillier & Iida (2005)
-   Implements: NAIN (local+global) and NACH
-   Angular cost: turning angle normalised 0-1
-   Full computation — every segment as origin
-   ════════════════════════════════════════════════════════ */
-
-function segBearing(seg) {
-  // Bearing of segment in degrees (0-360)
-  const c = seg.geometry.coordinates;
-  const s = c[0], e = c[c.length-1];
-  const dx = e[0]-s[0], dy = e[1]-s[1];
-  return Math.atan2(dx, dy) * 180 / Math.PI;
+/* ════════════════════════════════════════════════
+   GRAPH BUILDING — angular dual graph
+════════════════════════════════════════════════ */
+function bearing(seg){
+  const c=seg.geometry.coordinates,s=c[0],e=c[c.length-1];
+  return Math.atan2(e[0]-s[0],e[1]-s[1])*180/Math.PI;
 }
-
-function angularCost(bearA, bearB) {
-  // Angular cost between two segments sharing a junction
-  // 0 = straight through, 1 = 180 degree turn
-  // Normalised to [0,1]: cost = angle/180
-  let diff = Math.abs(bearA - bearB);
-  if (diff > 180) diff = 360 - diff;
-  // The turning cost is the supplement — straight through = 0 cost
-  let turn = Math.abs(180 - diff);
-  return turn / 180; // 0=straight, 1=U-turn
+function angCost(bA,bB){
+  let d=Math.abs(bA-bB);if(d>180)d=360-d;return d/180;
 }
-
-function buildGraph(segs) {
-  // Build dual graph with angular edge weights
-  // Each edge stores: { to: segIdx, angCost: 0-1, metricLen: metres }
-  const SNAP1=0.00008, SNAP2=0.00020;
-  const nmap1={}, nmap2={};
+function buildGraph(segs){
+  const SNAP1=0.00008,SNAP2=0.00020,nmap1={},nmap2={};
   const key1=c=>Math.round(c[0]/SNAP1)+','+Math.round(c[1]/SNAP1);
   const key2=c=>Math.round(c[0]/SNAP2)+','+Math.round(c[1]/SNAP2);
-
-  // Pre-compute bearings
-  const bearings = segs.map(s=>segBearing(s));
-  // Pre-compute metric lengths
-  const lengths = segs.map(s=>{ try { return turf.length(s,{units:'meters'}); } catch(e){return 10;} });
-
+  const bearings=segs.map(bearing);
   segs.forEach((s,i)=>{
     const c=s.geometry.coordinates;
-    [key1(c[0]),key1(c[c.length-1])].forEach(k=>{ if(!nmap1[k])nmap1[k]=[]; nmap1[k].push(i); });
-    [key2(c[0]),key2(c[c.length-1])].forEach(k=>{ if(!nmap2[k])nmap2[k]=[]; nmap2[k].push(i); });
+    [c[0],c[c.length-1]].forEach(ep=>{
+      const k1=key1(ep),k2=key2(ep);
+      if(!nmap1[k1])nmap1[k1]=[];nmap1[k1].push(i);
+      if(!nmap2[k2])nmap2[k2]=[];nmap2[k2].push(i);
+    });
   });
-
-  // graph[i] = array of {to, angCost, metricLen}
-  const graph = segs.map(()=>[]);
-  const seen = segs.map(()=>new Set());
-
+  const graph=segs.map(()=>[]);
+  const seen=segs.map(()=>new Set());
   segs.forEach((s,i)=>{
     const c=s.geometry.coordinates;
-    const endpoints=[c[0],c[c.length-1]];
-    endpoints.forEach(ep=>{
-      let neighbours=[];
-      const k1=key1(ep);
-      if(nmap1[k1]) neighbours=nmap1[k1].filter(j=>j!==i);
-      if(neighbours.length===0){
-        const k2=key2(ep);
-        if(nmap2[k2]) neighbours=nmap2[k2].filter(j=>j!==i);
-      }
-      neighbours.forEach(j=>{
+    [c[0],c[c.length-1]].forEach(ep=>{
+      let nb=(nmap1[key1(ep)]||[]).filter(j=>j!==i);
+      if(!nb.length)nb=(nmap2[key2(ep)]||[]).filter(j=>j!==i);
+      nb.forEach(j=>{
         if(!seen[i].has(j)){
           seen[i].add(j);
-          const ac=angularCost(bearings[i],bearings[j]);
-          graph[i].push({to:j, angCost:ac, metricLen:lengths[j]});
+          graph[i].push({to:j,ang:angCost(bearings[i],bearings[j]),met:segs[j]._len||10});
         }
       });
     });
   });
-
-  return {graph, lengths};
+  return graph;
 }
 
-function runSSFromAll(segs, graphData, metricRadius) {
-  // Full angular segment analysis — every segment as origin
-  // Returns: { nodeCount, totalDepth, choice } arrays
-  const n = segs.length;
-  const {graph, lengths} = graphData;
-  const totalDepth  = new Float64Array(n); // sum of angular depths received
-  const nodeCount   = new Float64Array(n); // count of segments that reached this one
-  const choice      = new Float64Array(n); // betweenness count
+/* ════════════════════════════════════════════════
+   SPACE SYNTAX — binary min-heap Dijkstra
+════════════════════════════════════════════════ */
+function Heap(){this.h=[];}
+Heap.prototype.push=function(n){
+  this.h.push(n);let i=this.h.length-1;
+  while(i>0){const p=(i-1)>>1;if(this.h[p].a<=this.h[i].a)break;const t=this.h[p];this.h[p]=this.h[i];this.h[i]=t;i=p;}
+};
+Heap.prototype.pop=function(){
+  const top=this.h[0],last=this.h.pop();
+  if(this.h.length){this.h[0]=last;let i=0;
+    while(true){let s=i,l=2*i+1,r=2*i+2;
+      if(l<this.h.length&&this.h[l].a<this.h[s].a)s=l;
+      if(r<this.h.length&&this.h[r].a<this.h[s].a)s=r;
+      if(s===i)break;const t=this.h[s];this.h[s]=this.h[i];this.h[i]=t;i=s;
+    }
+  }
+  return top;
+};
+Heap.prototype.empty=function(){return!this.h.length;};
 
-  // Min-heap for Dijkstra (angular distance)
-  // Simple priority queue using sorted array — adequate for n<5000
-  function dijkstra(src) {
-    const angDist  = new Float32Array(n).fill(Infinity);
-    const metDist  = new Float32Array(n).fill(Infinity);
-    const pred     = new Int32Array(n).fill(-1);
-    angDist[src]=0; metDist[src]=0;
-    // Use a simple min-array queue
-    const inQueue  = new Uint8Array(n);
-    const q = [{i:src, a:0, m:0}];
-    inQueue[src]=1;
-
-    while(q.length){
-      // Find min angular dist in queue
-      let minIdx=0;
-      for(let k=1;k<q.length;k++){ if(q[k].a<q[minIdx].a) minIdx=k; }
-      const {i,a,m} = q[minIdx];
-      q.splice(minIdx,1);
-      inQueue[i]=0;
-
-      if(a>angDist[i]) continue; // stale
-
-      const edges=graph[i];
-      for(let e=0;e<edges.length;e++){
-        const {to,angCost,metricLen}=edges[e];
-        const newMet = m + metricLen;
-        if(newMet > metricRadius) continue; // metric radius constraint
-        const newAng = a + angCost;
-        if(newAng < angDist[to]){
-          angDist[to]=newAng;
-          metDist[to]=newMet;
-          pred[to]=i;
-          if(!inQueue[to]){ q.push({i:to,a:newAng,m:newMet}); inQueue[to]=1; }
-        }
+function runSS(segs,graph,metRadius){
+  const n=segs.length;
+  const totDepth=new Float64Array(n);
+  const nodeCnt=new Float64Array(n);
+  const choice=new Float64Array(n);
+  function dijkstra(src){
+    const aD=new Float32Array(n).fill(Infinity);
+    const mD=new Float32Array(n).fill(Infinity);
+    const pred=new Int32Array(n).fill(-1);
+    aD[src]=0;mD[src]=0;
+    const pq=new Heap();pq.push({i:src,a:0,m:0});
+    while(!pq.empty()){
+      const{i,a,m}=pq.pop();
+      if(a>aD[i])continue;
+      for(const{to,ang,met}of graph[i]){
+        const nm=m+met;
+        if(metRadius!==Infinity&&nm>metRadius)continue;
+        const na=a+ang;
+        if(na<aD[to]){aD[to]=na;mD[to]=nm;pred[to]=i;pq.push({i:to,a:na,m:nm});}
       }
     }
-    return {angDist, metDist, pred};
+    return{aD,pred};
   }
-
-  // Process every segment as origin
-  for(let src=0; src<n; src++){
-    const {angDist, metDist, pred} = dijkstra(src);
-
-    // Accumulate integration (totalDepth) per destination
-    // Each destination seg receives the angular depth from src
-    for(let dst=0; dst<n; dst++){
-      if(dst===src || angDist[dst]===Infinity) continue;
-      totalDepth[dst] += angDist[dst];
-      nodeCount[dst]  += 1;
-      // Betweenness: walk back path from dst→src, credit intermediates
+  for(let src=0;src<n;src++){
+    const{aD,pred}=dijkstra(src);
+    for(let dst=0;dst<n;dst++){
+      if(dst===src||aD[dst]===Infinity)continue;
+      totDepth[dst]+=aD[dst];nodeCnt[dst]++;
       let cur=pred[dst];
-      while(cur!==-1 && cur!==src){
-        choice[cur]++;
-        cur=pred[cur];
-      }
+      while(cur!==-1&&cur!==src){choice[cur]++;cur=pred[cur];}
     }
   }
-
-  return {totalDepth, nodeCount, choice};
+  return{totDepth,nodeCnt,choice};
 }
 
-function computeSpaceSyntax(sSegs, cSegs, sGraphData, cGraphData) {
-  const n = sSegs.length;
-
-  // ── LOCAL INTEGRATION 400m (NAIN R400) ──
-  const r400 = runSSFromAll(sSegs, sGraphData, 400);
-  sSegs.forEach((s,i)=>{
-    const nc=r400.nodeCount[i], td=r400.totalDepth[i];
-    s._r400_nc=nc; s._r400_td=td;
-    // NAIN = nodeCount^1.2 / (totalDepth + 2)
-    s._li4_raw = nc>0 ? Math.pow(nc,1.2)/(td+2) : 0;
-  });
-
-  // ── LOCAL INTEGRATION 800m (NAIN R800) ──
-  const r800 = runSSFromAll(sSegs, sGraphData, 800);
-  sSegs.forEach((s,i)=>{
-    const nc=r800.nodeCount[i], td=r800.totalDepth[i];
-    s._r800_nc=nc; s._r800_td=td;
-    s._li8_raw = nc>0 ? Math.pow(nc,1.2)/(td+2) : 0;
-    // NACH R800 = log(choice+1)/log(totalDepth+3)
-    s._ch_raw = td>0 ? Math.log(r800.choice[i]+1)/Math.log(td+3) : 0;
-  });
-
-  // ── GLOBAL INTEGRATION (NAIN Rn) ──
-  const isGlobalSame = (cSegs===sSegs);
-  const globalSegs = isGlobalSame ? sSegs : cSegs;
-  const globalGraph = isGlobalSame ? sGraphData : cGraphData;
-  const globalR = Math.max(5000, (sSegs.length * 100)); // ~network size in metres
-  const rn = runSSFromAll(globalSegs, globalGraph, globalR);
-
-  if(isGlobalSame){
-    sSegs.forEach((s,i)=>{
-      const nc=rn.nodeCount[i], td=rn.totalDepth[i];
-      s._gi_raw = nc>0 ? Math.pow(nc,1.2)/(td+2) : 0;
-    });
-  } else {
-    // Map global scores from context segs back to study segs by nearest midpoint
-    const ctxMids = cSegs.map(cs=>{
-      const c=cs.geometry.coordinates;
-      return turf.midpoint(turf.point(c[0]),turf.point(c[c.length-1])).geometry.coordinates;
-    });
-    const ctxScores = cSegs.map((cs,ci)=>{
-      const nc=rn.nodeCount[ci], td=rn.totalDepth[ci];
-      return nc>0 ? Math.pow(nc,1.2)/(td+2) : 0;
-    });
+function computeSS(sSegs,cSegs,sGraph,cGraph){
+  const n=sSegs.length;
+  // NAIN R800
+  const r800=runSS(sSegs,sGraph,800);
+  sSegs.forEach((s,i)=>{const nc=r800.nodeCnt[i],td=r800.totDepth[i];s._li8_raw=nc>0?Math.pow(nc,1.2)/(td+2):0;s._ch_raw=td>0?Math.log(r800.choice[i]+1)/Math.log(td+3):0;});
+  // NACH R1200 — reuse choice from a 1200m run
+  const r1200=runSS(sSegs,sGraph,1200);
+  sSegs.forEach((s,i)=>{const td=r1200.totDepth[i];s._ch1200_raw=td>0?Math.log(r1200.choice[i]+1)/Math.log(td+3):0;});
+  // Global (Rn) on context
+  const rn=runSS(cSegs,cGraph,Infinity);
+  if(cSegs===sSegs){
+    sSegs.forEach((s,i)=>{const nc=rn.nodeCnt[i],td=rn.totDepth[i];s._gi_raw=nc>0?Math.pow(nc,1.2)/(td+2):0;s._gch_raw=td>0?Math.log(rn.choice[i]+1)/Math.log(td+3):0;});
+  }else{
+    const ctxMids=cSegs.map(cs=>cs._mid);
+    const giScores=cSegs.map((cs,ci)=>{const nc=rn.nodeCnt[ci],td=rn.totDepth[ci];return nc>0?Math.pow(nc,1.2)/(td+2):0;});
+    const gchScores=cSegs.map((cs,ci)=>{const td=rn.totDepth[ci];return td>0?Math.log(rn.choice[ci]+1)/Math.log(td+3):0;});
     sSegs.forEach(ss=>{
-      const c=ss.geometry.coordinates;
-      const mid=turf.midpoint(turf.point(c[0]),turf.point(c[c.length-1])).geometry.coordinates;
-      let bestScore=0, bestD=Infinity;
-      ctxMids.forEach((cm,ci)=>{
-        const d=Math.sqrt((mid[0]-cm[0])**2+(mid[1]-cm[1])**2);
-        if(d<bestD){bestD=d;bestScore=ctxScores[ci];}
-      });
-      ss._gi_raw=bestScore;
+      const mid=ss._mid;let bestGi=0,bestGch=0,bestD=Infinity;
+      ctxMids.forEach((cm,ci)=>{const d=(mid[0]-cm[0])**2+(mid[1]-cm[1])**2;if(d<bestD){bestD=d;bestGi=giScores[ci];bestGch=gchScores[ci];}});
+      ss._gi_raw=bestGi;ss._gch_raw=bestGch;
     });
   }
-
-  // ── NORMALISE ALL RAW SCORES to 0-1 ──
-  const norm=(arr,field,raw)=>{
-    const mx=Math.max(1,...arr.map(s=>s[raw]));
-    arr.forEach(s=>{ s[field]=s[raw]/mx; });
-  };
-  norm(sSegs,'_li4','_li4_raw');
-  norm(sSegs,'_li8','_li8_raw');
-  norm(sSegs,'_gi', '_gi_raw');
-  norm(sSegs,'_ch', '_ch_raw');
+  // Normalise all to 0-1
+  const norm=(segs,raw,field)=>{const mx=Math.max(1,...segs.map(s=>s[raw]));segs.forEach(s=>{s[field]=s[raw]/mx;});};
+  norm(sSegs,'_li8_raw','_li8');
+  norm(sSegs,'_ch1200_raw','_ch');
+  norm(sSegs,'_gi_raw','_gi');
+  norm(sSegs,'_gch_raw','_gch');
 }
 
-// Keep calcIntegration/calcGlobalInt/calcChoice as stubs (replaced by computeSpaceSyntax)
-function calcIntegration(){}
-function calcGlobalInt(){}
-function calcChoice(){}
+/* ════════════════════════════════════════════════
+   PROXIMITY ENGINE — snap-to-network + linear decay
+   Modes: direct / corridor / catchment
+════════════════════════════════════════════════ */
+function computeProximity(segs,graph,attConfigs){
+  const n=segs.length;
+  // Reset
+  segs.forEach(s=>{s._pxRaw=0;s._pxDet={};});
 
-function calcProximity(segs,radii) {
-  segs.forEach(s=>{
-    const mid=turf.midpoint(turf.point(s.geometry.coordinates[0]),turf.point(s.geometry.coordinates[s.geometry.coordinates.length-1]));
-    let tot=0;
-    radii.forEach(r=>{ if (!r.data||!r.data.features) return;
-      let best=0;
-      for (const f of r.data.features) { try {
-        const pt=f.geometry.type==='Point'?turf.point(f.geometry.coordinates):turf.centroid(f);
-        const d=turf.distance(mid,pt,{units:'meters'});
-        if (d<=r.hostR) { best=2; break; } else if (d<=r.accessR&&best<1) best=1;
-      } catch(ex) {} }
-      s._pxDet[r.name]=best; tot+=best; });
-    s._pxRaw=tot;
+  attConfigs.forEach(cfg=>{
+    if(!cfg.data||!cfg.data.features)return;
+    const{name,mode,accessLen,radius,vis}=cfg;
+    if(vis===false)return;
+
+    cfg.data.features.forEach(f=>{
+      // Get POI point
+      let poiPt;
+      try{
+        if(f.geometry.type==='Point')poiPt=f.geometry.coordinates;
+        else poiPt=turf.centroid(f).geometry.coordinates;
+      }catch(ex){return;}
+
+      // Step 1: Find nearest segment (snap) within 200m Euclidean
+      const SNAP_R=0.002; // ~200m in degrees
+      let nearestIdx=-1,nearestD=Infinity;
+      segs.forEach((s,i)=>{
+        const dx=s._mid[0]-poiPt[0],dy=s._mid[1]-poiPt[1];
+        const d=Math.sqrt(dx*dx+dy*dy);
+        if(d<nearestD&&d<SNAP_R){nearestD=d;nearestIdx=i;}
+      });
+      if(nearestIdx<0)return;
+
+      // Step 2: Propagate from host segment through network
+      if(mode==='direct'){
+        // Host + immediate neighbours only
+        segs[nearestIdx]._pxRaw+=1;
+        segs[nearestIdx]._pxDet[name]=(segs[nearestIdx]._pxDet[name]||0)+1;
+        (graph[nearestIdx]||[]).forEach(({to})=>{
+          const d=segs[nearestIdx]._len||10;
+          if(d<=accessLen){
+            const score=1-(d/Math.max(accessLen,1));
+            segs[to]._pxRaw+=score;
+            segs[to]._pxDet[name]=(segs[to]._pxDet[name]||0)+score;
+          }
+        });
+      }else{
+        // Corridor or Catchment — BFS/Dijkstra on metric distance from host
+        const maxR=mode==='corridor'?radius:radius;
+        const mDist=new Float32Array(n).fill(Infinity);
+        mDist[nearestIdx]=0;
+        const pq=new Heap();pq.push({i:nearestIdx,a:0,m:0});
+        while(!pq.empty()){
+          const{i,m}=pq.pop();
+          if(m>mDist[i])continue;
+          // Score this segment
+          const score=m<=accessLen?1:Math.max(0,1-(m-accessLen)/(radius-accessLen+1));
+          if(score>0){
+            segs[i]._pxRaw+=score;
+            segs[i]._pxDet[name]=(segs[i]._pxDet[name]||0)+score;
+          }
+          for(const{to,met}of(graph[i]||[])){
+            const nm=m+met;
+            if(nm<=maxR&&nm<mDist[to]){mDist[to]=nm;pq.push({i:to,a:nm,m:nm});}
+          }
+        }
+      }
+    });
   });
+
+  // Min-max normalise
   const mx=Math.max(1,...segs.map(s=>s._pxRaw));
-  segs.forEach(s=>{ s._px=s._pxRaw/mx; });
+  segs.forEach(s=>{s._px=s._pxRaw/mx;});
 }
 
-function closeLoops(segs) {
-  const hi=segs.filter(s=>s._pwn==='pwn1'||s._pwn==='pwn2');
-  segs.forEach(s=>{ if (s._pwn!=='pwn3') return;
-    const mid=turf.midpoint(turf.point(s.geometry.coordinates[0]),turf.point(s.geometry.coordinates[s.geometry.coordinates.length-1]));
-    let nearby=0;
-    for (const p of hi) { try {
-      const pm=turf.midpoint(turf.point(p.geometry.coordinates[0]),turf.point(p.geometry.coordinates[p.geometry.coordinates.length-1]));
-      if (turf.distance(mid,pm,{units:'meters'})<65) nearby++;
-      if (nearby>=2) { s._pwn='pwn2'; s._loop=true; break; }
-    } catch(ex) {} } });
+/* ════════════════════════════════════════════════
+   GRADING — 4 tiers
+════════════════════════════════════════════════ */
+function grade(segs,ssW,proxW,p1t,p2t,p3t,wN){
+  segs.forEach(s=>{
+    s._ss=s._coN*wN[0]+s._li8*wN[1]+s._gi*wN[2]+s._ch*wN[3]+s._gch*wN[4];
+    s._final=s._ss*ssW+s._px*proxW;
+  });
+  const sorted=[...segs].sort((a,b)=>b._final-a._final);
+  const e1=Math.floor(sorted.length*p1t);
+  const e2=Math.floor(sorted.length*(p1t+p2t));
+  const e3=Math.floor(sorted.length*(p1t+p2t+p3t));
+  sorted.forEach((s,i)=>{s._pwn=i<e1?'pwn1':i<e2?'pwn2':i<e3?'pwn3':'pwn4';});
+  // Connectivity gate: truly isolated segments (0 neighbours) → pwn4
+  segs.forEach(s=>{if(s._co===0&&s._pwn!=='pwn4'){s._pwn='pwn4';s._gated=true;}else s._gated=false;});
 }
 
-function renderSegs(segs) {
-  if (segLayer) { map.removeLayer(segLayer); segLayer=null; }
-  const cmap={pwn1:'#FF5733',pwn2:'#FFC300',pwn3:'#58D68D'};
-  const wmap={pwn1:6,pwn2:4,pwn3:2.5};
-  const CMAP=cmap, WMAP=wmap; // closure for event handlers
+/* ════════════════════════════════════════════════
+   NETWORK CONNECTORS
+════════════════════════════════════════════════ */
+function buildConnectors(segs,graph){
+  if(connLayer){map.removeLayer(connLayer);connLayer=null;}
+  // Find dangling ends of PWN1+PWN2 network
+  const hiSet=new Set(segs.filter(s=>s._pwn==='pwn1'||s._pwn==='pwn2').map(s=>s._id));
+  const connSegs=[];
+  segs.forEach((s,i)=>{
+    if(s._pwn!=='pwn3'&&s._pwn!=='pwn4')return;
+    // Check if this segment bridges two hi-priority segments
+    const hiNeighbours=(graph[i]||[]).filter(({to})=>hiSet.has(segs[to]._id));
+    if(hiNeighbours.length>=2){
+      s._connector=true;
+      connSegs.push(s);
+    }else{
+      // BFS: check if we're on shortest path between two hi-priority dangling ends within 150m
+      const mD=new Float32Array(segs.length).fill(Infinity);
+      mD[i]=0;const q=[i];let hiCount=0;
+      while(q.length&&hiCount<2){
+        const cur=q.shift();
+        for(const{to,met}of(graph[cur]||[])){
+          const nd=mD[cur]+met;
+          if(nd<=150&&nd<mD[to]){mD[to]=nd;q.push(to);if(hiSet.has(segs[to]._id))hiCount++;}
+        }
+      }
+      if(hiCount>=2){s._connector=true;connSegs.push(s);}
+    }
+  });
+  if(!connSegs.length)return;
+  connLayer=L.geoJSON(turf.featureCollection(connSegs),{
+    style:()=>({color:'#4aca4a',weight:3,opacity:.9,dashArray:'8,4'})
+  }).addTo(map);
+  document.getElementById('leg-conn').style.display='flex';
+  showToast(connSegs.length+' connector segments identified');
+}
+function toggleConnectors(){
+  connectorsOn=!connectorsOn;
+  const btn=document.getElementById('conn-btn');
+  btn.classList.toggle('active',connectorsOn);
+  if(connectorsOn){buildConnectors(segments,lastGraph);}
+  else{
+    if(connLayer){map.removeLayer(connLayer);connLayer=null;}
+    document.getElementById('leg-conn').style.display='none';
+  }
+}
+let lastGraph=null;
+
+/* ════════════════════════════════════════════════
+   RE-GRADE (on attractor toggle)
+════════════════════════════════════════════════ */
+function reGrade(){
+  if(!segments.length||!lastGraph)return;
+  const ssW=parseInt(document.getElementById('ssfw').value)/100;
+  const proxW=1-ssW;
+  const p1t=parseInt(document.getElementById('p1t').value)/100;
+  const p2t=parseInt(document.getElementById('p2t').value)/100;
+  const p3t=parseInt(document.getElementById('p3t').value)/100;
+  const wKeys=['conn','li8','gi','ch','gch'];
+  const wRaw=wKeys.map(k=>parseInt(document.getElementById('w-'+k).value));
+  const wTot=wRaw.reduce((s,v)=>s+v,0)||100;
+  const wN=wRaw.map(v=>v/wTot);
+  // Recompute proximity with current attVis
+  const attConfigs=atts.map((a,i)=>({...a,vis:attVis[i]!==false}));
+  computeProximity(segments,lastGraph,attConfigs);
+  grade(segments,ssW,proxW,p1t,p2t,p3t,wN);
+  renderSegs(segments);
+  if(connectorsOn)buildConnectors(segments,lastGraph);
+  updateStats(segments);
+  showToast('PWN re-graded');
+}
+
+/* ════════════════════════════════════════════════
+   CLIP NETWORK
+════════════════════════════════════════════════ */
+function clipNet(net,bCoords){
+  const ring=[...bCoords,bCoords[0]],poly=turf.polygon([ring]),out=[];
+  for(const f of(net.features||[])){
+    try{
+      if(!f.geometry)continue;
+      const lines=f.geometry.type==='MultiLineString'?f.geometry.coordinates.map(c=>turf.lineString(c)):f.geometry.type==='LineString'?[f]:[];
+      for(const ln of lines){
+        const cl=turf.bboxClip(ln,turf.bbox(poly));
+        if(cl&&cl.geometry&&cl.geometry.coordinates.length>=2)out.push(cl);
+      }
+    }catch(ex){}
+  }
+  return turf.featureCollection(out);
+}
+
+/* ════════════════════════════════════════════════
+   RENDER SEGMENTS
+════════════════════════════════════════════════ */
+function renderSegs(segs){
+  if(segLayer){map.removeLayer(segLayer);segLayer=null;}
+  const CMAP={pwn1:'#D0021B',pwn2:'#E87722',pwn3:'#F5C518',pwn4:'#1565C0'};
+  const WMAP={pwn1:6,pwn2:4,pwn3:2.5,pwn4:1.5};
   segLayer=L.geoJSON(turf.featureCollection(segs),{
-    style:function(f){ const s=segs[f._id], pwn=s?s._pwn:'pwn3';
-      return {color:CMAP[pwn]||'#888',weight:WMAP[pwn]||2,opacity:pwnVis[pwn]?0.9:0}; },
-    onEachFeature:function(feature,layer){ const s=segs[feature._id]; if (!s) return;
+    style:f=>{const s=segs[f._id],pwn=s?s._pwn:'pwn4';return{color:CMAP[pwn]||'#888',weight:WMAP[pwn]||2,opacity:pwnVis[pwn]?0.9:0};},
+    onEachFeature:(feature,layer)=>{
+      const s=segs[feature._id];if(!s)return;
       layer._pwn=s._pwn;
       layer.on('click',()=>showInfo(s));
-      layer.on('mouseover',()=>{ layer.setStyle({weight:WMAP[s._pwn]+3,opacity:1}); });
-      layer.on('mouseout', ()=>{ layer.setStyle({weight:WMAP[s._pwn],opacity:0.9}); }); }
+      layer.on('mouseover',()=>layer.setStyle({weight:WMAP[s._pwn]+3,opacity:1}));
+      layer.on('mouseout', ()=>layer.setStyle({weight:WMAP[s._pwn],opacity:0.9}));
+    }
   }).addTo(map);
-  if (netLayer) map.removeLayer(netLayer);
+  if(netLayer)map.removeLayer(netLayer);
 }
 
-function showInfo(s) {
-  const pc={pwn1:'#FF5733',pwn2:'#FFC300',pwn3:'#58D68D'};
-  const pl={pwn1:'PWN 1 — Critical',pwn2:'PWN 2 — Important',pwn3:'PWN 3 — Secondary'};
-  document.getElementById('info-id').textContent='Segment #'+s._id+(s._loop?' · loop-closed':'')+(s._gated?' · isolated':'');
-  document.getElementById('info-grade').textContent=pl[s._pwn]||'—';
-  document.getElementById('info-grade').style.color=pc[s._pwn]||'#888';
-  document.getElementById('info-bar-fill').style.width=Math.round((s._final||0)*100)+'%';
+function showInfo(s){
+  const PC={pwn1:'#D0021B',pwn2:'#E87722',pwn3:'#F5C518',pwn4:'#1565C0'};
+  const PL={pwn1:'PWN 1 — Critical Backbone',pwn2:'PWN 2 — Secondary Corridor',pwn3:'PWN 3 — Local Feeder',pwn4:'PWN 4 — Spatial Enclave'};
+  document.getElementById('info-id').textContent='Segment #'+s._id+(s._gated?' · isolated':'')+(s._connector?' · connector':'');
+  document.getElementById('info-grade').textContent=PL[s._pwn]||'—';
+  document.getElementById('info-grade').style.color=PC[s._pwn]||'#888';
+  document.getElementById('ibar-fill').style.width=Math.round((s._final||0)*100)+'%';
   document.getElementById('iv-fin').textContent=(s._final||0).toFixed(3);
   document.getElementById('iv-ss').textContent=(s._ss||0).toFixed(3);
-  document.getElementById('iv-co').textContent=(s._coN||0).toFixed(3)+' ('+s._co+' links)';
-  document.getElementById('iv-l4').textContent='NAIN R400: '+(s._li4||0).toFixed(4)+' (raw:'+(s._li4_raw||0).toFixed(3)+')';
-  document.getElementById('iv-l8').textContent='NAIN R800: '+(s._li8||0).toFixed(4)+' (raw:'+(s._li8_raw||0).toFixed(3)+')';
-  document.getElementById('iv-gi').textContent='NAIN Rn: '+(s._gi||0).toFixed(4)+' (raw:'+(s._gi_raw||0).toFixed(3)+')';
-  document.getElementById('iv-ch').textContent='NACH R800: '+(s._ch||0).toFixed(4)+' (raw:'+(s._ch_raw||0).toFixed(3)+')';
-  document.getElementById('iv-px').textContent=(s._px||0).toFixed(3)+' (raw: '+s._pxRaw+')';
+  document.getElementById('iv-co').textContent=(s._coN||0).toFixed(3)+' ('+s._co+')';
+  document.getElementById('iv-l8').textContent=(s._li8||0).toFixed(4);
+  document.getElementById('iv-gi').textContent=(s._gi||0).toFixed(4);
+  document.getElementById('iv-ch').textContent=(s._ch||0).toFixed(4);
+  document.getElementById('iv-gch').textContent=(s._gch||0).toFixed(4);
+  document.getElementById('iv-px').textContent=(s._px||0).toFixed(3)+' (raw:'+s._pxRaw.toFixed(2)+')';
   document.getElementById('iv-px-det').innerHTML=Object.entries(s._pxDet||{}).map(([k,v])=>`
-    <div class="info-row">
-      <span class="info-lbl" style="padding-left:8px">↳ ${k}</span>
-      <span class="info-val" style="color:${v===2?'#c8522a':v===1?'#c89020':'#383838'}">${v===2?'Host':v===1?'Access':'—'}</span>
-    </div>`).join('');
+    <div class="ir"><span class="il" style="padding-left:8px">↳ ${k}</span><span class="iv">${v.toFixed(2)}</span></div>`).join('');
   document.getElementById('info-panel').style.display='block';
 }
 
-function sleep(ms) { return new Promise(r=>setTimeout(r,ms)); }
-function showToast(msg) {
-  const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show');
-  setTimeout(()=>t.classList.remove('show'),2800);
+function updateStats(segs){
+  document.getElementById('s1').textContent=segs.filter(s=>s._pwn==='pwn1').length;
+  document.getElementById('s2').textContent=segs.filter(s=>s._pwn==='pwn2').length;
+  document.getElementById('s3').textContent=segs.filter(s=>s._pwn==='pwn3').length;
+  document.getElementById('s4').textContent=segs.filter(s=>s._pwn==='pwn4').length;
+  document.getElementById('st').textContent=segs.length;
+  document.getElementById('stats-footer').style.display='block';
+  document.getElementById('legend').style.display='block';
 }
 
-renderCities(); renderAtts(); renderMatrix(); renderAttLayers();
+/* ════════════════════════════════════════════════
+   MAIN ANALYSIS
+════════════════════════════════════════════════ */
+async function runAnalysis(){
+  if(activeCity===null){showToast('Select a city first');return;}
+  const city=cities[activeCity];
+  if(!city.network){showToast('Upload a street network first');return;}
+
+  const ssW=parseInt(document.getElementById('ssfw').value)/100;
+  const proxW=1-ssW;
+  const p1t=parseInt(document.getElementById('p1t').value)/100;
+  const p2t=parseInt(document.getElementById('p2t').value)/100;
+  const p3t=parseInt(document.getElementById('p3t').value)/100;
+  const wKeys=['conn','li8','gi','ch','gch'];
+  const wRaw=wKeys.map(k=>parseInt(document.getElementById('w-'+k).value));
+  const wTot=wRaw.reduce((s,v)=>s+v,0)||100;
+  const wN=wRaw.map(v=>v/wTot);
+
+  document.getElementById('prog-overlay').style.display='flex';
+  setP(3,'Preparing networks...');await sleep(30);
+
+  let studyNet=JSON.parse(JSON.stringify(city.network));
+  let ctxNet=studyNet;
+  if(bounds.study){setP(7,'Clipping to study area...');await sleep(20);studyNet=clipNet(studyNet,bounds.study);}
+  if(bounds.ctx){setP(11,'Clipping to global context...');await sleep(20);ctxNet=clipNet(JSON.parse(JSON.stringify(city.network)),bounds.ctx);}
+
+  setP(15,'Segmenting roads at 100m...');await sleep(30);
+  const sSegs=segRoads(studyNet,100);
+  if(!sSegs.length){document.getElementById('prog-overlay').style.display='none';showToast('No segments found — check file or boundary');return;}
+
+  setP(22,'Segmenting context roads...');await sleep(20);
+  const cSegs=bounds.ctx?segRoads(ctxNet,100):sSegs;
+
+  setP(28,'Building angular dual graph...');await sleep(20);
+  const sGraph=buildGraph(sSegs);
+  const cGraph=bounds.ctx?buildGraph(cSegs):sGraph;
+  lastGraph=sGraph;
+
+  // Connectivity
+  setP(33,'Computing connectivity...');await sleep(10);
+  const maxConn=Math.max(1,...sSegs.map((s,i)=>sGraph[i]?sGraph[i].length:0));
+  sSegs.forEach((s,i)=>{s._co=sGraph[i]?sGraph[i].length:0;s._coN=s._co/maxConn;});
+
+  // Space Syntax — full computation
+  setP(38,'Running Space Syntax — NAIN R800...');await sleep(20);
+  computeSS(sSegs,cSegs,sGraph,cGraph);
+  setP(78,'Space Syntax complete');await sleep(20);
+
+  // Proximity — snap-to-network
+  setP(80,'Computing proximity — snapping to network...');await sleep(20);
+  const attConfigs=atts.map((a,i)=>({...a,vis:attVis[i]!==false}));
+  computeProximity(sSegs,sGraph,attConfigs);
+
+  // Grade
+  setP(92,'Grading PWN — 4 tiers...');await sleep(20);
+  grade(sSegs,ssW,proxW,p1t,p2t,p3t,wN);
+
+  // Render
+  setP(97,'Rendering map...');await sleep(20);
+  renderSegs(sSegs);
+  segments=sSegs;
+  updateStats(sSegs);
+
+  // Enable connectors button
+  document.getElementById('conn-btn').disabled=false;
+  if(connectorsOn)buildConnectors(sSegs,sGraph);
+
+  setP(100,'Complete');await sleep(300);
+  document.getElementById('prog-overlay').style.display='none';
+  showToast('Analysis complete — '+sSegs.length+' segments graded');
+}
+
+/* ── INIT ── */
+renderCities();renderAtts();renderAttLayers();
 </script>
 </body>
 </html>
