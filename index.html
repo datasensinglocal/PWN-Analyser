@@ -179,6 +179,13 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
 .base-btn{background:rgba(13,13,13,.85);border:1px solid #2a2a2a;border-radius:4px;padding:5px 10px;font-size:10px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;cursor:pointer;color:#666;font-family:inherit;transition:all .15s;text-align:left}
 .base-btn:hover{border-color:#c8a96e;color:#c8a96e}
 .base-btn.active{background:rgba(200,169,110,.15);border-color:#c8a96e;color:#c8a96e}
+.phase-label{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  background:rgba(13,13,13,.85);border:1px solid #2a2a2a;border-radius:6px;
+  padding:10px 20px;z-index:600;pointer-events:none;text-align:center;
+  transition:opacity .4s;opacity:0}
+.phase-label.show{opacity:1}
+.phase-name{font-size:13px;font-weight:300;color:#e2ddd6;letter-spacing:-.01em}
+.phase-sub{font-size:10px;color:#555;font-family:monospace;margin-top:3px}
 .toast{position:absolute;bottom:20px;left:50%;transform:translateX(-50%);background:#1a1a1a;border:1px solid #2a2a2a;color:#c8a96e;padding:7px 14px;border-radius:4px;font-size:10px;font-family:monospace;z-index:2000;opacity:0;transition:opacity .3s;pointer-events:none;white-space:nowrap}
 .toast.show{opacity:1}
 </style>
@@ -347,6 +354,10 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
       <div class="prog-track"><div class="prog-fill" id="prog-fill" style="width:0%"></div></div>
       <div class="prog-pct" id="prog-pct">0%</div>
     </div>
+  </div>
+  <div class="phase-label" id="phase-label">
+    <div class="phase-name" id="phase-name"></div>
+    <div class="phase-sub" id="phase-sub"></div>
   </div>
   <div class="toast" id="toast"></div>
 </div>
@@ -824,64 +835,102 @@ Heap.prototype.pop=function(){
 };
 Heap.prototype.empty=function(){return!this.h.length;};
 
-function runSS(segs,graph,metRadius){
-  const n=segs.length;
-  const totDepth=new Float64Array(n);
-  const nodeCnt=new Float64Array(n);
-  const choice=new Float64Array(n);
-  function dijkstra(src){
-    const aD=new Float32Array(n).fill(Infinity);
-    const mD=new Float32Array(n).fill(Infinity);
-    const pred=new Int32Array(n).fill(-1);
-    aD[src]=0;mD[src]=0;
-    const pq=new Heap();pq.push({i:src,a:0,m:0});
-    while(!pq.empty()){
-      const{i,a,m}=pq.pop();
-      if(a>aD[i])continue;
-      for(const{to,ang,met}of graph[i]){
-        const nm=m+met;
-        if(metRadius!==Infinity&&nm>metRadius)continue;
-        const na=a+ang;
-        if(na<aD[to]){aD[to]=na;mD[to]=nm;pred[to]=i;pq.push({i:to,a:na,m:nm});}
+// Async SS engine — yields every BATCH origins so browser stays responsive
+async function runSS(segs, graph, metRadius, onProgress) {
+  const n = segs.length;
+  const totDepth = new Float64Array(n);
+  const nodeCnt  = new Float64Array(n);
+  const choice   = new Float64Array(n);
+  const BATCH    = 50; // yield every 50 origins
+
+  function dijkstra(src) {
+    const aD   = new Float32Array(n).fill(Infinity);
+    const mD   = new Float32Array(n).fill(Infinity);
+    const pred = new Int32Array(n).fill(-1);
+    aD[src] = 0; mD[src] = 0;
+    const pq = new Heap(); pq.push({i:src, a:0, m:0});
+    while (!pq.empty()) {
+      const {i, a, m} = pq.pop();
+      if (a > aD[i]) continue;
+      for (const {to, ang, met} of graph[i]) {
+        const nm = m + met;
+        if (metRadius !== Infinity && nm > metRadius) continue;
+        const na = a + ang;
+        if (na < aD[to]) { aD[to]=na; mD[to]=nm; pred[to]=i; pq.push({i:to,a:na,m:nm}); }
       }
     }
-    return{aD,pred};
+    return {aD, pred};
   }
-  for(let src=0;src<n;src++){
-    const{aD,pred}=dijkstra(src);
-    for(let dst=0;dst<n;dst++){
-      if(dst===src||aD[dst]===Infinity)continue;
-      totDepth[dst]+=aD[dst];nodeCnt[dst]++;
-      let cur=pred[dst];
-      while(cur!==-1&&cur!==src){choice[cur]++;cur=pred[cur];}
+
+  for (let src = 0; src < n; src++) {
+    const {aD, pred} = dijkstra(src);
+    for (let dst = 0; dst < n; dst++) {
+      if (dst === src || aD[dst] === Infinity) continue;
+      totDepth[dst] += aD[dst]; nodeCnt[dst]++;
+      let cur = pred[dst];
+      while (cur !== -1 && cur !== src) { choice[cur]++; cur = pred[cur]; }
+    }
+    // Yield to browser every BATCH origins to update UI + avoid freeze
+    if (src % BATCH === 0) {
+      if (onProgress) onProgress(src / n);
+      await new Promise(r => setTimeout(r, 0));
     }
   }
-  return{totDepth,nodeCnt,choice};
+  return {totDepth, nodeCnt, choice};
 }
 
-function computeSS(sSegs,cSegs,sGraph,cGraph){
-  const n=sSegs.length;
-  // NAIN R800
-  const r800=runSS(sSegs,sGraph,800);
-  sSegs.forEach((s,i)=>{const nc=r800.nodeCnt[i],td=r800.totDepth[i];s._li8_raw=nc>0?Math.pow(nc,1.2)/(td+2):0;s._ch_raw=td>0?Math.log(r800.choice[i]+1)/Math.log(td+3):0;});
-  // NACH R1200 — reuse choice from a 1200m run
-  const r1200=runSS(sSegs,sGraph,1200);
-  sSegs.forEach((s,i)=>{const td=r1200.totDepth[i];s._ch1200_raw=td>0?Math.log(r1200.choice[i]+1)/Math.log(td+3):0;});
-  // Global (Rn) on context
-  const rn=runSS(cSegs,cGraph,Infinity);
-  if(cSegs===sSegs){
-    sSegs.forEach((s,i)=>{const nc=rn.nodeCnt[i],td=rn.totDepth[i];s._gi_raw=nc>0?Math.pow(nc,1.2)/(td+2):0;s._gch_raw=td>0?Math.log(rn.choice[i]+1)/Math.log(td+3):0;});
-  }else{
-    const ctxMids=cSegs.map(cs=>cs._mid);
-    const giScores=cSegs.map((cs,ci)=>{const nc=rn.nodeCnt[ci],td=rn.totDepth[ci];return nc>0?Math.pow(nc,1.2)/(td+2):0;});
-    const gchScores=cSegs.map((cs,ci)=>{const td=rn.totDepth[ci];return td>0?Math.log(rn.choice[ci]+1)/Math.log(td+3):0;});
-    sSegs.forEach(ss=>{
-      const mid=ss._mid;let bestGi=0,bestGch=0,bestD=Infinity;
-      ctxMids.forEach((cm,ci)=>{const d=(mid[0]-cm[0])**2+(mid[1]-cm[1])**2;if(d<bestD){bestD=d;bestGi=giScores[ci];bestGch=gchScores[ci];}});
-      ss._gi_raw=bestGi;ss._gch_raw=bestGch;
+async function computeSS(sSegs, cSegs, sGraph, cGraph, pctStart, pctEnd) {
+  const n = sSegs.length;
+  const pctRange = pctEnd - pctStart;
+
+  // NAIN + NACH R800 (pctStart → pctStart+30%)
+  setP(pctStart + pctRange*0.0, 'NAIN R800 — 0/' + n + ' origins...');
+  const r800 = await runSS(sSegs, sGraph, 800, p => {
+    setP(pctStart + pctRange*0.30*p, 'NAIN R800 — '+Math.round(p*n)+'/'+n+' origins...');
+  });
+  sSegs.forEach((s,i) => {
+    const nc=r800.nodeCnt[i], td=r800.totDepth[i];
+    s._li8_raw  = nc>0 ? Math.pow(nc,1.2)/(td+2) : 0;
+  });
+
+  // NACH R1200 (pctStart+30% → pctStart+55%)
+  setP(pctStart + pctRange*0.30, 'NACH R1200 — 0/'+n+' origins...');
+  const r1200 = await runSS(sSegs, sGraph, 1200, p => {
+    setP(pctStart + pctRange*0.30 + pctRange*0.25*p, 'NACH R1200 — '+Math.round(p*n)+'/'+n+' origins...');
+  });
+  sSegs.forEach((s,i) => {
+    const td=r1200.totDepth[i];
+    s._ch1200_raw = td>0 ? Math.log(r1200.choice[i]+1)/Math.log(td+3) : 0;
+  });
+
+  // Global Rn on context segs (pctStart+55% → pctEnd)
+  const ctxN = cSegs.length;
+  setP(pctStart + pctRange*0.55, 'Global NAIN/NACH — 0/'+ctxN+' origins...');
+  const rn = await runSS(cSegs, cGraph, Infinity, p => {
+    setP(pctStart + pctRange*0.55 + pctRange*0.45*p, 'Global NAIN/NACH — '+Math.round(p*ctxN)+'/'+ctxN+' origins...');
+  });
+
+  if (cSegs === sSegs) {
+    sSegs.forEach((s,i) => {
+      const nc=rn.nodeCnt[i], td=rn.totDepth[i];
+      s._gi_raw  = nc>0 ? Math.pow(nc,1.2)/(td+2) : 0;
+      s._gch_raw = td>0 ? Math.log(rn.choice[i]+1)/Math.log(td+3) : 0;
+    });
+  } else {
+    const ctxMids   = cSegs.map(cs => cs._mid);
+    const giScores  = cSegs.map((cs,ci) => { const nc=rn.nodeCnt[ci],td=rn.totDepth[ci]; return nc>0?Math.pow(nc,1.2)/(td+2):0; });
+    const gchScores = cSegs.map((cs,ci) => { const td=rn.totDepth[ci]; return td>0?Math.log(rn.choice[ci]+1)/Math.log(td+3):0; });
+    sSegs.forEach(ss => {
+      const mid=ss._mid; let bestGi=0,bestGch=0,bestD=Infinity;
+      ctxMids.forEach((cm,ci) => {
+        const d=(mid[0]-cm[0])**2+(mid[1]-cm[1])**2;
+        if(d<bestD){bestD=d;bestGi=giScores[ci];bestGch=gchScores[ci];}
+      });
+      ss._gi_raw=bestGi; ss._gch_raw=bestGch;
     });
   }
-  // Normalise all to 0-1
+
+  // Normalise 0-1
   const norm=(segs,raw,field)=>{const mx=Math.max(1,...segs.map(s=>s[raw]));segs.forEach(s=>{s[field]=s[raw]/mx;});};
   norm(sSegs,'_li8_raw','_li8');
   norm(sSegs,'_ch1200_raw','_ch');
@@ -1073,6 +1122,127 @@ function clipNet(net,bCoords){
 /* ════════════════════════════════════════════════
    RENDER SEGMENTS
 ════════════════════════════════════════════════ */
+/* ════════════════════════════════════════════════
+   ANIMATED LAYER REVEAL
+════════════════════════════════════════════════ */
+
+// Show a labelled phase on the map — colour each segment by a score field
+function showPhase(segs, label, sublabel, colorFn, weightFn) {
+  if(segLayer){ map.removeLayer(segLayer); segLayer=null; }
+
+  const el = document.getElementById('phase-label');
+  const nm = document.getElementById('phase-name');
+  const sb = document.getElementById('phase-sub');
+  nm.textContent = label;
+  sb.textContent = sublabel;
+  el.classList.add('show');
+
+  segLayer = L.geoJSON(turf.featureCollection(segs), {
+    style: f => {
+      const s = segs[f._id];
+      return { color: colorFn(s), weight: weightFn ? weightFn(s) : 2.5, opacity: 0.85 };
+    },
+    onEachFeature: (feature, layer) => {
+      const s = segs[feature._id]; if(!s) return;
+      layer._pwn = s._pwn || 'pwn4';
+      layer.on('click', () => showInfo(s));
+    }
+  }).addTo(map);
+}
+
+function hidePhaseLabel() {
+  document.getElementById('phase-label').classList.remove('show');
+}
+
+// Heatmap colour: blue (low) → cyan → green → yellow → red (high)
+function heatColor(val) {
+  const v = Math.max(0, Math.min(1, val));
+  if(v < 0.25) {
+    const t = v / 0.25;
+    return `rgb(${Math.round(t*0)},${Math.round(t*180)},${Math.round(255-t*55)})`;
+  } else if(v < 0.5) {
+    const t = (v-0.25)/0.25;
+    return `rgb(${Math.round(t*100)},${Math.round(180+t*75)},${Math.round(200-t*200)})`;
+  } else if(v < 0.75) {
+    const t = (v-0.5)/0.25;
+    return `rgb(${Math.round(100+t*155)},${Math.round(255-t*55)},0)`;
+  } else {
+    const t = (v-0.75)/0.25;
+    return `rgb(255,${Math.round(200-t*200)},0)`;
+  }
+}
+
+// POI proximity colour: grey (none) → warm gold → orange (high)
+function proxColor(val) {
+  const v = Math.max(0, Math.min(1, val));
+  if(v < 0.01) return '#2a2a2a';
+  const r = Math.round(80 + v*175);
+  const g = Math.round(60 + v*90);
+  const b = Math.round(20);
+  return `rgb(${r},${g},${b})`;
+}
+
+async function runAnimatedReveal(segs, sGraph, attConfigs, ssW, proxW, p1t, p2t, p3t, wN) {
+  const HOLD = 1200; // ms to hold each phase
+  const n = segs.length;
+
+  // Phase 1 — Connectivity
+  showPhase(segs, 'Connectivity', 'Direct junction connections',
+    s => heatColor(s._coN), s => 1.5 + s._coN * 3);
+  await sleep(HOLD);
+
+  // Phase 2 — NAIN R800 (local integration)
+  showPhase(segs, 'Local Integration  ·  NAIN R800', 'How central each street is within 800m walking',
+    s => heatColor(s._li8), s => 1.5 + s._li8 * 3.5);
+  await sleep(HOLD);
+
+  // Phase 3 — NACH R1200 (local choice)
+  showPhase(segs, 'Local Choice  ·  NACH R1200', 'Through-movement desire lines within 1200m',
+    s => heatColor(s._ch), s => 1.5 + s._ch * 3.5);
+  await sleep(HOLD);
+
+  // Phase 4 — Global Integration
+  showPhase(segs, 'Global Integration  ·  NAIN Rn', 'Position in the city-wide network',
+    s => heatColor(s._gi), s => 1.5 + s._gi * 3.5);
+  await sleep(HOLD);
+
+  // Phase 5 — Global Choice
+  showPhase(segs, 'Global Choice  ·  NACH Rn', 'City-scale through-movement corridors',
+    s => heatColor(s._gch), s => 1.5 + s._gch * 3.5);
+  await sleep(HOLD);
+
+  // Phase 6 — Combined SS score
+  showPhase(segs, 'Space Syntax Composite', 'Weighted combination of all SS measures',
+    s => heatColor(s._ss), s => 1.5 + s._ss * 4);
+  await sleep(HOLD);
+
+  // Phase 7 — Each POI type proximity, one by one
+  const activeAtts = attConfigs.filter(a => a.data && a.vis !== false);
+  for(const cfg of activeAtts) {
+    // Compute per-attractor proximity scores temporarily
+    segs.forEach(s => { s._tmpPx = s._pxDet[cfg.name] || 0; });
+    const mx = Math.max(1, ...segs.map(s => s._tmpPx));
+    segs.forEach(s => { s._tmpPxN = s._tmpPx / mx; });
+    showPhase(segs,
+      cfg.name + '  ·  Proximity',
+      cfg.mode === 'direct' ? 'Direct access only' : cfg.mode === 'corridor' ? 'Approach corridor  ·  ' + cfg.radius + 'm' : 'Network catchment  ·  ' + cfg.radius + 'm',
+      s => proxColor(s._tmpPxN),
+      s => 1.5 + s._tmpPxN * 4
+    );
+    await sleep(HOLD);
+  }
+
+  // Phase 8 — Combined proximity
+  showPhase(segs, 'Trip Attractor Proximity  ·  Composite', 'All attractor influences combined',
+    s => proxColor(s._px), s => 1.5 + s._px * 4);
+  await sleep(HOLD);
+
+  // Phase 9 — Final PWN grade (fade in)
+  hidePhaseLabel();
+  renderSegs(segs);
+  await sleep(400);
+}
+
 function renderSegs(segs){
   if(segLayer){map.removeLayer(segLayer);segLayer=null;}
   const CMAP={pwn1:'#D0021B',pwn2:'#E87722',pwn3:'#F5C518',pwn4:'#1565C0'};
@@ -1150,6 +1320,15 @@ async function runAnalysis(){
   const sSegs=segRoads(studyNet,100);
   if(!sSegs.length){document.getElementById('prog-overlay').style.display='none';showToast('No segments found — check file or boundary');return;}
 
+  // Safety cap — Space Syntax is O(n²), browser freezes beyond ~3000 segments
+  const MAX_SEGS = 3000;
+  if(sSegs.length > MAX_SEGS){
+    document.getElementById('prog-overlay').style.display='none';
+    showToast('⚠ '+sSegs.length+' segments — too large. Draw a smaller Study Area boundary first.');
+    alert('Too many segments ('+sSegs.length+'). The Space Syntax engine needs a Study Area boundary to work within.\n\nRecommended: draw a Study Area boundary covering 1–2 neighbourhoods (roughly 1–3 km²).\n\nThis keeps segment count under '+MAX_SEGS+' for reliable results.');
+    return;
+  }
+
   setP(22,'Segmenting context roads...');await sleep(20);
   const cSegs=bounds.ctx?segRoads(ctxNet,100):sSegs;
 
@@ -1164,9 +1343,9 @@ async function runAnalysis(){
   sSegs.forEach((s,i)=>{s._co=sGraph[i]?sGraph[i].length:0;s._coN=s._co/maxConn;});
 
   // Space Syntax — full computation
-  setP(38,'Running Space Syntax — NAIN R800...');await sleep(20);
-  computeSS(sSegs,cSegs,sGraph,cGraph);
-  setP(78,'Space Syntax complete');await sleep(20);
+  setP(38,'Starting Space Syntax — '+sSegs.length+' segments...');await sleep(30);
+  await computeSS(sSegs, cSegs, sGraph, cGraph, 38, 80);
+  setP(80,'Space Syntax complete — '+sSegs.length+' segments processed');await sleep(20);
 
   // Proximity — snap-to-network
   setP(80,'Computing proximity — snapping to network...');await sleep(20);
@@ -1176,19 +1355,18 @@ async function runAnalysis(){
   // Grade
   setP(92,'Grading PWN — 4 tiers...');await sleep(20);
   grade(sSegs,ssW,proxW,p1t,p2t,p3t,wN);
-
-  // Render
-  setP(97,'Rendering map...');await sleep(20);
-  renderSegs(sSegs);
   segments=sSegs;
-  updateStats(sSegs);
 
-  // Enable connectors button
+  // Hide progress overlay — animated reveal takes over
+  setP(100,'Complete');await sleep(200);
+  document.getElementById('prog-overlay').style.display='none';
+
+  // Animated layer-by-layer reveal
+  await runAnimatedReveal(sSegs, sGraph, attConfigs, ssW, proxW, p1t, p2t, p3t, wN);
+
+  updateStats(sSegs);
   document.getElementById('conn-btn').disabled=false;
   if(connectorsOn)buildConnectors(sSegs,sGraph);
-
-  setP(100,'Complete');await sleep(300);
-  document.getElementById('prog-overlay').style.display='none';
   showToast('Analysis complete — '+sSegs.length+' segments graded');
 }
 
