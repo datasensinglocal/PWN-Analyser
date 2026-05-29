@@ -40,6 +40,17 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
 .btn{height:26px;padding:0 10px;font-size:10px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;border:1px solid #252525;border-radius:4px;background:#1a1a1a;color:#888;cursor:pointer;white-space:nowrap;font-family:inherit;transition:all .15s}
 .btn:hover{border-color:#c8a96e;color:#c8a96e}
 
+/* session panel */
+.session-bar{padding:8px 14px;border-bottom:1px solid #252525;background:#0a0a0a;flex-shrink:0;display:flex;gap:6px;align-items:center}
+.session-select{flex:1;background:#1a1a1a;border:1px solid #252525;color:#ccc;border-radius:4px;padding:0 8px;font-size:11px;font-family:inherit;height:26px;outline:none;cursor:pointer}
+.session-select:focus{border-color:#c8a96e}
+.session-btn{height:26px;padding:0 9px;font-size:10px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;border:1px solid #252525;border-radius:4px;background:#1a1a1a;color:#888;cursor:pointer;white-space:nowrap;font-family:inherit;transition:all .15s}
+.session-btn:hover{border-color:#c8a96e;color:#c8a96e}
+.session-btn.save{border-color:#2a4a2a;color:#4a9a4a}
+.session-btn.save:hover{background:#1a2a1a;border-color:#4a9a4a;color:#7aca7a}
+.session-btn.del{border-color:#4a1a1a;color:#9a4a4a}
+.session-btn.del:hover{background:#2a1a1a;border-color:#c84a4a;color:#ff7a7a}
+
 /* city chips */
 .city-chip{display:flex;align-items:center;gap:6px;padding:5px 8px;background:#1a1a1a;border:1px solid #252525;border-radius:4px;font-size:12px;cursor:pointer;margin-bottom:4px;transition:all .15s}
 .city-chip:hover,.city-chip.active{border-color:#c8a96e}
@@ -114,6 +125,10 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
 .map-controls{position:absolute;top:14px;left:14px;z-index:500;display:flex;flex-direction:column;gap:6px}
 .map-btn{background:rgba(13,13,13,.92);border:1px solid #2a2a2a;border-radius:4px;padding:7px 13px;font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;cursor:pointer;color:#666;font-family:inherit;transition:all .15s}
 .map-btn:hover{border-color:#c8a96e;color:#c8a96e}
+.base-switcher{display:flex;gap:3px;background:rgba(13,13,13,.92);border:1px solid #2a2a2a;border-radius:4px;padding:3px}
+.base-btn{flex:1;padding:4px 6px;font-size:9px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;border:none;border-radius:3px;background:transparent;color:#555;cursor:pointer;font-family:inherit;transition:all .15s;white-space:nowrap}
+.base-btn:hover{color:#ccc;background:rgba(255,255,255,.08)}
+.base-btn.active{background:#c8a96e;color:#0d0d0d}
 .map-btn.study{border-color:#7a3a3a;color:#cc8888}
 .map-btn.study.drawing{background:rgba(30,10,10,.95);border-color:#D0021B;color:#ff9999;animation:pr 1.4s infinite}
 .map-btn.ctx{border-color:#3a4a68;color:#88aacc}
@@ -156,6 +171,14 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
 .prog-fill{height:100%;background:#c8a96e;border-radius:2px;transition:width .25s}
 .prog-pct{font-size:11px;color:#c8a96e;font-family:monospace;margin-top:5px}
 
+.basemap-switcher{display:flex;gap:3px;background:rgba(13,13,13,.92);border:1px solid #2a2a2a;border-radius:4px;padding:3px;backdrop-filter:blur(4px)}
+.basemap-btn{padding:4px 8px;font-size:9px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;border:1px solid transparent;border-radius:3px;background:none;color:#666;cursor:pointer;font-family:inherit;transition:all .15s;white-space:nowrap}
+.basemap-btn:hover{color:#c8a96e;border-color:#c8a96e}
+.basemap-btn.active-base{background:#c8a96e;color:#0d0d0d;border-color:#c8a96e}
+.basemap-switcher{display:flex;flex-direction:column;gap:3px;margin-top:2px}
+.base-btn{background:rgba(13,13,13,.85);border:1px solid #2a2a2a;border-radius:4px;padding:5px 10px;font-size:10px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;cursor:pointer;color:#666;font-family:inherit;transition:all .15s;text-align:left}
+.base-btn:hover{border-color:#c8a96e;color:#c8a96e}
+.base-btn.active{background:rgba(200,169,110,.15);border-color:#c8a96e;color:#c8a96e}
 .toast{position:absolute;bottom:20px;left:50%;transform:translateX(-50%);background:#1a1a1a;border:1px solid #2a2a2a;color:#c8a96e;padding:7px 14px;border-radius:4px;font-size:10px;font-family:monospace;z-index:2000;opacity:0;transition:opacity .3s;pointer-events:none;white-space:nowrap}
 .toast.show{opacity:1}
 </style>
@@ -175,6 +198,14 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
   <div class="run-bar">
     <button class="run-btn" onclick="runAnalysis()">Run PWN Analysis</button>
     <button class="conn-btn" id="conn-btn" onclick="toggleConnectors()" disabled>Connectors</button>
+  </div>
+  <div class="session-bar">
+    <select class="session-select" id="session-select" onchange="sessionSelected()">
+      <option value="">— Saved sessions —</option>
+    </select>
+    <button class="session-btn save" onclick="saveSession()" title="Save current session">Save</button>
+    <button class="session-btn" onclick="loadSession()" title="Load selected session">Load</button>
+    <button class="session-btn del" onclick="deleteSession()" title="Delete selected session">Del</button>
   </div>
   <div class="sb-body">
 
@@ -273,6 +304,12 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
     <button class="map-btn study" id="study-btn" onclick="startDraw('study')">Draw Study Area</button>
     <button class="map-btn ctx" id="ctx-btn" onclick="startDraw('ctx')">Draw Global Context</button>
     <button class="map-btn" id="clear-btn" onclick="clearBounds()" style="display:none">Clear Boundaries</button>
+    <div class="basemap-switcher">
+      <button class="basemap-btn active-base" data-bm="osm" onclick="switchBaseMap('osm')" title="OpenStreetMap">OSM</button>
+      <button class="basemap-btn" data-bm="voyager" onclick="switchBaseMap('voyager')" title="Carto Voyager">Voyager</button>
+      <button class="basemap-btn" data-bm="carto_light" onclick="switchBaseMap('carto_light')" title="Carto Light">Light</button>
+      <button class="basemap-btn" data-bm="carto_dark" onclick="switchBaseMap('carto_dark')" title="Carto Dark">Dark</button>
+    </div>
   </div>
   <div class="legend" id="legend">
     <div class="leg-title">PWN Grade</div>
@@ -340,15 +377,34 @@ let segments=[],editMarkers={study:[],ctx:[]};
    MAP INIT
 ════════════════════════════════════════════════ */
 const map=L.map('map',{zoomControl:true,preferCanvas:true}).setView([12.97,77.59],13);
-L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}{r}.png',{
-  attribution:'&copy; OpenStreetMap &copy; CARTO',maxZoom:19
-}).addTo(map);
-const labelsPane=map.createPane('labels');
-labelsPane.style.zIndex=650;
-labelsPane.style.pointerEvents='none';
-L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png',{
-  attribution:'',maxZoom:19,pane:'labels'
-}).addTo(map);
+// Base map selector — OSM default, switchable
+const baseMaps = {
+  osm: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+    attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    maxZoom:19
+  }),
+  voyager: L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',{
+    attribution:'&copy; OpenStreetMap &copy; CARTO',maxZoom:19
+  }),
+  carto_light: L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',{
+    attribution:'&copy; OpenStreetMap &copy; CARTO',maxZoom:19
+  }),
+  carto_dark: L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{
+    attribution:'&copy; OpenStreetMap &copy; CARTO',maxZoom:19
+  })
+};
+let activeBase = baseMaps.osm;
+activeBase.addTo(map);
+
+function switchBaseMap(name) {
+  if(activeBase) map.removeLayer(activeBase);
+  activeBase = baseMaps[name];
+  activeBase.addTo(map);
+  // re-add PWN layers on top
+  if(segLayer) segLayer.addTo(map);
+  if(connLayer) connLayer.addTo(map);
+  document.querySelectorAll('.basemap-btn').forEach(b=>b.classList.toggle('active-base', b.dataset.bm===name));
+}
 
 /* ════════════════════════════════════════════════
    KML PARSER
@@ -1136,8 +1192,210 @@ async function runAnalysis(){
   showToast('Analysis complete — '+sSegs.length+' segments graded');
 }
 
+/* ── BASE MAP SWITCHER ── */
+function switchBase(name){
+  map.removeLayer(activeBase);
+  activeBase = baseMaps[name];
+  activeBase.addTo(map);
+  // Bring labels pane to front if needed
+  document.querySelectorAll('.base-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('base-'+name).classList.add('active');
+  // OSM has its own labels built in — no need for separate label layer
+  // For other tiles labels are embedded too (voyager/positron/dark use full tiles)
+}
+
+/* ── BASEMAP SWITCHER ── */
+function switchBase(name){
+  if(activeBase===name)return;
+  map.removeLayer(baseMaps[activeBase]);
+  baseMaps[name].addTo(map);
+  // Ensure PWN segments stay on top
+  if(segLayer){segLayer.remove();segLayer.addTo(map);}
+  if(connLayer){connLayer.remove();connLayer.addTo(map);}
+  activeBase=name;
+  document.querySelectorAll('.base-btn').forEach(b=>{
+    b.classList.toggle('active',b.id==='base-'+name);
+  });
+}
+
+/* ════════════════════════════════════════════════
+   SESSION PERSISTENCE — localStorage
+   Stores: city name, network GeoJSON, attractors
+   (name, mode, radii, GeoJSON data), boundaries,
+   and attractor type config
+════════════════════════════════════════════════ */
+const SESSION_KEY = 'pwn_sessions_v2';
+
+function getSessions(){
+  try{ return JSON.parse(localStorage.getItem(SESSION_KEY)||'{}'); }
+  catch(e){ return {}; }
+}
+function setSessions(s){ localStorage.setItem(SESSION_KEY, JSON.stringify(s)); }
+
+function renderSessionList(){
+  const sel = document.getElementById('session-select');
+  const sessions = getSessions();
+  const keys = Object.keys(sessions).sort();
+  const current = sel.value;
+  sel.innerHTML = '<option value="">— Saved sessions —</option>';
+  keys.forEach(k=>{
+    const opt = document.createElement('option');
+    opt.value = k;
+    opt.textContent = k + (sessions[k].savedAt ? ' ('+sessions[k].savedAt+')' : '');
+    sel.appendChild(opt);
+  });
+  if(current && sessions[current]) sel.value = current;
+}
+
+function sessionSelected(){
+  // Just selection — load is triggered by Load button
+}
+
+function saveSession(){
+  if(activeCity===null){ showToast('No city to save'); return; }
+  const city = cities[activeCity];
+  if(!city.network){ showToast('Upload a network first'); return; }
+
+  const defaultName = city.name + (bounds.study ? ' (study)' : '');
+  const name = prompt('Save session as:', defaultName);
+  if(!name || !name.trim()) return;
+  const sname = name.trim();
+
+  // Serialise attractor data (GeoJSON can be large — store as-is)
+  const attData = atts.map(a=>({
+    name: a.name,
+    color: a.color,
+    mode: a.mode,
+    accessLen: a.accessLen,
+    radius: a.radius,
+    count: a.count,
+    geojson: a.data || null
+  }));
+
+  // Serialise boundaries (just coordinate arrays)
+  const savedBounds = {
+    study: bounds.study ? JSON.parse(JSON.stringify(bounds.study)) : null,
+    ctx:   bounds.ctx   ? JSON.parse(JSON.stringify(bounds.ctx))   : null
+  };
+
+  const session = {
+    cityName: city.name,
+    network: city.network,
+    attractors: attData,
+    boundaries: savedBounds,
+    savedAt: new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'2-digit'})
+  };
+
+  // Check size — localStorage has ~5MB limit
+  try{
+    const s = getSessions();
+    s[sname] = session;
+    setSessions(s);
+    renderSessionList();
+    document.getElementById('session-select').value = sname;
+    showToast('Session "'+sname+'" saved');
+  }catch(e){
+    showToast('Storage full — try a smaller network or fewer attractors');
+    console.error('Save failed:',e);
+  }
+}
+
+function loadSession(){
+  const sel = document.getElementById('session-select');
+  const sname = sel.value;
+  if(!sname){ showToast('Select a session to load'); return; }
+  const sessions = getSessions();
+  const session = sessions[sname];
+  if(!session){ showToast('Session not found'); return; }
+
+  // Clear existing state
+  if(netLayer){ map.removeLayer(netLayer); netLayer=null; }
+  if(segLayer){ map.removeLayer(segLayer); segLayer=null; }
+  if(connLayer){ map.removeLayer(connLayer); connLayer=null; }
+  Object.keys(attLayers).forEach(k=>{ map.removeLayer(attLayers[k]); });
+  attLayers={}; attVis={};
+  clearBounds();
+
+  // Restore city
+  const existing = cities.findIndex(c=>c.name===session.cityName);
+  if(existing>=0){
+    cities[existing].network = session.network;
+    setActive(existing);
+  } else {
+    cities.push({name:session.cityName, network:session.network});
+    setActive(cities.length-1);
+  }
+
+  // Restore network layer
+  if(session.network){
+    netLayer = L.geoJSON(session.network,{style:{color:'#aaaaaa',weight:0.8,opacity:0.5}}).addTo(map);
+    try{ map.fitBounds(netLayer.getBounds(),{padding:[30,30]}); }catch(ex){}
+    const ct = session.network.features ? session.network.features.length : 0;
+    document.getElementById('net-zone').classList.add('loaded');
+    document.getElementById('net-t').textContent='✓ '+ct+' features loaded';
+    document.getElementById('net-t').className='uz-t ok';
+    document.getElementById('net-s').textContent=session.cityName+' network';
+  }
+
+  // Restore attractors
+  atts = session.attractors.map(a=>({
+    name: a.name,
+    color: a.color,
+    mode: a.mode || 'corridor',
+    accessLen: a.accessLen || 100,
+    radius: a.radius || 300,
+    count: a.count || 0,
+    data: a.geojson || null
+  }));
+  atts.forEach((a,i)=>{
+    if(a.data){
+      attLayers[i] = L.geoJSON(a.data,{
+        pointToLayer:(f,ll)=>L.circleMarker(ll,{radius:4,fillColor:a.color,color:'#fff',weight:1.5,fillOpacity:.9}),
+        style:{color:a.color,weight:2}
+      }).addTo(map);
+      attVis[i]=true;
+    }
+  });
+
+  // Restore boundaries
+  if(session.boundaries){
+    if(session.boundaries.study){
+      bounds.study = session.boundaries.study;
+      const pts = bounds.study.map(c=>[c[1],c[0]]);
+      boundLayers.study = L.polygon(pts,{color:'#D0021B',weight:2,fillColor:'#D0021B',fillOpacity:.06,dashArray:'6,3'}).addTo(map);
+      addEditNodes('study', pts);
+      document.getElementById('clear-btn').style.display='block';
+      document.getElementById('bl').style.display='block';
+    }
+    if(session.boundaries.ctx){
+      bounds.ctx = session.boundaries.ctx;
+      const pts = bounds.ctx.map(c=>[c[1],c[0]]);
+      boundLayers.ctx = L.polygon(pts,{color:'#1565C0',weight:2,fillColor:'#1565C0',fillOpacity:.06,dashArray:'4,2'}).addTo(map);
+      addEditNodes('ctx', pts);
+      document.getElementById('clear-btn').style.display='block';
+      document.getElementById('bl').style.display='block';
+    }
+  }
+
+  renderCities(); renderAtts(); renderAttLayers();
+  showToast('Session "'+sname+'" loaded — ready to run analysis');
+}
+
+function deleteSession(){
+  const sel = document.getElementById('session-select');
+  const sname = sel.value;
+  if(!sname){ showToast('Select a session to delete'); return; }
+  if(!confirm('Delete session "'+sname+'"?')) return;
+  const s = getSessions();
+  delete s[sname];
+  setSessions(s);
+  renderSessionList();
+  showToast('Session "'+sname+'" deleted');
+}
+
 /* ── INIT ── */
 renderCities();renderAtts();renderAttLayers();
+renderSessionList();
 </script>
 </body>
 </html>
