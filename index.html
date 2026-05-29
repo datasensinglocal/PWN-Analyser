@@ -254,9 +254,9 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
         <div class="ss-block">
           <div class="ss-wr"><span class="ss-lbl">Connectivity</span><input type="range" id="w-conn" min="0" max="100" value="10" step="1" oninput="syncSSW()"/><span class="ss-val" id="wv-conn">10%</span></div>
           <div class="ss-wr"><span class="ss-lbl">Local Int. 800m</span><input type="range" id="w-li8" min="0" max="100" value="30" step="1" oninput="syncSSW()"/><span class="ss-val" id="wv-li8">30%</span></div>
-          <div class="ss-wr"><span class="ss-lbl">Global Int.</span><input type="range" id="w-gi" min="0" max="100" value="20" step="1" oninput="syncSSW()"/><span class="ss-val" id="wv-gi">20%</span></div>
+          <div class="ss-wr"><span class="ss-lbl">City-scale Int. R2500</span><input type="range" id="w-gi" min="0" max="100" value="20" step="1" oninput="syncSSW()"/><span class="ss-val" id="wv-gi">20%</span></div>
           <div class="ss-wr"><span class="ss-lbl">Local Choice 1200m</span><input type="range" id="w-ch" min="0" max="100" value="25" step="1" oninput="syncSSW()"/><span class="ss-val" id="wv-ch">25%</span></div>
-          <div class="ss-wr"><span class="ss-lbl">Global Choice</span><input type="range" id="w-gch" min="0" max="100" value="15" step="1" oninput="syncSSW()"/><span class="ss-val" id="wv-gch">15%</span></div>
+          <div class="ss-wr"><span class="ss-lbl">City-scale Choice R2500</span><input type="range" id="w-gch" min="0" max="100" value="15" step="1" oninput="syncSSW()"/><span class="ss-val" id="wv-gch">15%</span></div>
           <div class="ss-total" id="ss-total">Total: 100%</div>
         </div>
       </div>
@@ -309,7 +309,7 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
   <div id="map"></div>
   <div class="map-controls">
     <button class="map-btn study" id="study-btn" onclick="startDraw('study')">Draw Study Area</button>
-    <button class="map-btn ctx" id="ctx-btn" onclick="startDraw('ctx')">Draw Global Context</button>
+    <button class="map-btn ctx" id="ctx-btn" onclick="startDraw('ctx')" title="Auto-generated from study area. Draw manually to override.">Draw Global Context</button>
     <button class="map-btn" id="clear-btn" onclick="clearBounds()" style="display:none">Clear Boundaries</button>
     <div class="basemap-switcher">
       <button class="basemap-btn active-base" data-bm="osm" onclick="switchBaseMap('osm')" title="OpenStreetMap">OSM</button>
@@ -328,7 +328,7 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
   </div>
   <div class="bl" id="bl">
     <div class="bl-row"><div class="bl-line" style="background:#D0021B"></div>Study Area</div>
-    <div class="bl-row"><div class="bl-line" style="background:#1565C0"></div>Global Context</div>
+    <div class="bl-row"><div class="bl-line" style="background:#1565C0"></div>Global Context (auto 800m buffer)</div>
   </div>
   <div class="info-panel" id="info-panel">
     <span class="info-close" onclick="document.getElementById('info-panel').style.display='none'">×</span>
@@ -340,9 +340,9 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
     <div class="ir"><span class="il">SS score</span><span class="iv" id="iv-ss">—</span></div>
     <div class="ir"><span class="il" style="padding-left:8px">↳ Connectivity</span><span class="iv" id="iv-co">—</span></div>
     <div class="ir"><span class="il" style="padding-left:8px">↳ NAIN R800</span><span class="iv" id="iv-l8">—</span></div>
-    <div class="ir"><span class="il" style="padding-left:8px">↳ NAIN Rn</span><span class="iv" id="iv-gi">—</span></div>
+    <div class="ir"><span class="il" style="padding-left:8px">↳ NAIN R2500</span><span class="iv" id="iv-gi">—</span></div>
     <div class="ir"><span class="il" style="padding-left:8px">↳ NACH R1200</span><span class="iv" id="iv-ch">—</span></div>
-    <div class="ir"><span class="il" style="padding-left:8px">↳ NACH Rn</span><span class="iv" id="iv-gch">—</span></div>
+    <div class="ir"><span class="il" style="padding-left:8px">↳ NACH R2500</span><span class="iv" id="iv-gch">—</span></div>
     <hr class="idiv">
     <div class="ir"><span class="il">Proximity score</span><span class="iv" id="iv-px">—</span></div>
     <div id="iv-px-det"></div>
@@ -550,9 +550,50 @@ function finishDraw(){
   cancelDraw();
   document.getElementById('clear-btn').style.display='block';
   document.getElementById('bl').style.display='block';
-  showToast(type==='study'?'Study area set — drag nodes to edit':'Global context set — drag nodes to edit');
-  if(type==='study') setTimeout(previewSegmentCount, 200);
+  if(type==='study'){
+    showToast('Study area set — generating 800m context buffer...');
+    setTimeout(()=>{ autoGenerateContext(); previewSegmentCount(); }, 200);
+  } else {
+    showToast('Global context set — drag nodes to edit');
+  }
 }
+/* ── AUTO-GENERATE GLOBAL CONTEXT (800m buffer) ── */
+function autoGenerateContext(){
+  if(!bounds.study) return;
+  try{
+    // Build study polygon from bounds.study (lon,lat pairs)
+    const ring = [...bounds.study, bounds.study[0]];
+    const studyPoly = turf.polygon([ring]);
+    // Buffer by 800m
+    const buffered = turf.buffer(studyPoly, 0.8, {units:'kilometers'});
+    if(!buffered||!buffered.geometry) return;
+    // Extract outer ring coordinates → [lon,lat] pairs
+    const bufCoords = buffered.geometry.coordinates[0];
+    // Simplify to ~20 points so the editable boundary isn't overwhelming
+    const simplified = turf.simplify(buffered, {tolerance:0.0008, highQuality:true});
+    const simCoords = simplified.geometry.coordinates[0];
+    // Convert to [lat,lon] for Leaflet
+    const leafletPts = simCoords.map(c=>[c[1],c[0]]);
+    // Store as bounds.ctx in [lon,lat] format
+    bounds.ctx = simCoords.map(c=>[c[0],c[1]]);
+    // Remove old context layer
+    if(boundLayers.ctx){ map.removeLayer(boundLayers.ctx); boundLayers.ctx=null; }
+    editMarkers.ctx.forEach(m=>map.removeLayer(m)); editMarkers.ctx=[];
+    // Draw on map
+    const col = getCol('ctx');
+    boundLayers.ctx = L.polygon(leafletPts,{
+      color:col, weight:1.5, fillColor:col, fillOpacity:0.04, dashArray:'4,2'
+    }).addTo(map);
+    addEditNodes('ctx', leafletPts);
+    document.getElementById('clear-btn').style.display='block';
+    document.getElementById('bl').style.display='block';
+    showToast('Global context auto-set to 800m buffer — drag nodes to adjust');
+  } catch(e){
+    console.error('Auto-context failed:',e);
+    showToast('Could not auto-generate context — draw manually');
+  }
+}
+
 function clearBounds(){
   ['study','ctx'].forEach(t=>{
     if(boundLayers[t]){map.removeLayer(boundLayers[t]);boundLayers[t]=null;}
@@ -1123,10 +1164,12 @@ async function computeSS(sSegs, cSegs, sGraph, cGraph, pctStart, pctEnd) {
     s._ch1200_raw = td>0 ? Math.log(r1200.choice[i]+1)/Math.log(td+3) : 0;
   });
 
-  // ── Global NAIN + NACH Rn ── (+55% → +100%)
-  setP(pctStart + span*0.55, 'Global Integration — starting...');
-  const rn = await runSSInWorker(cG, cn, Infinity,
-    'Global NAIN/NACH', pctStart + span*0.55, pctEnd);
+  // ── City-scale NAIN + NACH R2500 ── (+55% → +100%)
+  // R2500 is a practical city-scale proxy — segments 2.5km away
+  // have negligible influence on pedestrian decisions anyway
+  setP(pctStart + span*0.55, 'City-scale Integration R2500 — starting...');
+  const rn = await runSSInWorker(cG, cn, 2500,
+    'City-scale NAIN/NACH R2500', pctStart + span*0.55, pctEnd);
 
   if(cSegs === sSegs){
     sSegs.forEach((s,i)=>{
@@ -1425,7 +1468,7 @@ async function runAnimatedReveal(segs, sGraph, attConfigs, ssW, proxW, p1t, p2t,
   await sleep(HOLD);
 
   // Phase 5 — Global Choice
-  showPhase(segs, 'Global Choice  ·  NACH Rn', 'City-scale through-movement corridors',
+  showPhase(segs, 'City-scale Choice  ·  NACH R2500', 'Through-movement at city scale',
     s => heatColor(s._gch), s => 1.5 + s._gch * 3.5);
   await sleep(HOLD);
 
