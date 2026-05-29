@@ -529,7 +529,10 @@ function addEditNodes(type,pts){
         boundLayers[type]=L.polygon(pts,{color:col,weight:2,fillColor:col,fillOpacity:.06,dashArray:type==='study'?'6,3':'4,2'}).addTo(map);
         bounds[type]=pts.map(p=>[p[1],p[0]]);
       });
-      map.once('mouseup',()=>{map.dragging.enable();map.off('mousemove');});
+      map.once('mouseup',()=>{
+        map.dragging.enable();map.off('mousemove');
+        if(type==='study') setTimeout(previewSegmentCount,200);
+      });
     });
     editMarkers[type].push(m);
   });
@@ -548,6 +551,7 @@ function finishDraw(){
   document.getElementById('clear-btn').style.display='block';
   document.getElementById('bl').style.display='block';
   showToast(type==='study'?'Study area set — drag nodes to edit':'Global context set — drag nodes to edit');
+  if(type==='study') setTimeout(previewSegmentCount, 200);
 }
 function clearBounds(){
   ['study','ctx'].forEach(t=>{
@@ -743,123 +747,185 @@ function showToast(msg){
    ROAD SEGMENTATION
 ════════════════════════════════════════════════ */
 /* ════════════════════════════════════════════════
-   JUNCTION-BASED SEGMENTATION
-   Splits roads at intersection points only.
-   Each piece between two junctions = one segment.
-   This is the correct Space Syntax method (DepthMapX).
-   For proximity scoring, long segments are further
-   subdivided at 50m intervals so POI snapping is accurate.
+   JUNCTION-BASED SEGMENTATION + COLLINEAR MERGE
+   1. Split roads at intersections only
+   2. Merge collinear adjacent segments (bearing diff < 15°)
+      → straight roads with many vertices become 1 segment
+   3. Subdivide long segments at 80m for proximity accuracy
+   This is the DepthMapX-equivalent approach.
 ════════════════════════════════════════════════ */
 
-function segRoads(net) {
-  const SNAP = 0.00008; // ~8m snap tolerance for junction detection
-  const MAX_PROX_LEN = 80; // max segment length for proximity (subdivide longer ones)
+const JUNCTION_SNAP = 0.00008; // ~8m
+const COLLINEAR_THRESH = 15;   // degrees — segments within this bearing diff get merged
+const MAX_PROX_LEN = 80;       // subdivide segments longer than this for proximity
 
-  // Step 1: collect all line geometries
-  const allLines = [];
-  for(const f of (net.features||[])) {
+function coordKey(c){ return Math.round(c[0]/JUNCTION_SNAP)+','+Math.round(c[1]/JUNCTION_SNAP); }
+
+function lineBearing(coords){
+  const s=coords[0], e=coords[coords.length-1];
+  return Math.atan2(e[0]-s[0], e[1]-s[1])*180/Math.PI;
+}
+
+function bearingDiff(a, b){
+  let d = Math.abs(a-b);
+  if(d>180) d=360-d;
+  return Math.min(d, 180-d); // collinear = same OR opposite direction
+}
+
+function segRoads(net) {
+  // ── Step 1: collect all coordinate arrays ──
+  const allCoords = [];
+  for(const f of (net.features||[])){
     if(!f.geometry) continue;
-    const lines = f.geometry.type==='MultiLineString'
-      ? f.geometry.coordinates.map(c=>c)
-      : f.geometry.type==='LineString' ? [f.geometry.coordinates] : [];
-    for(const coords of lines) {
-      if(coords.length >= 2) allLines.push(coords);
-    }
+    const arrs = f.geometry.type==='MultiLineString' ? f.geometry.coordinates
+               : f.geometry.type==='LineString'      ? [f.geometry.coordinates]
+               : [];
+    for(const c of arrs){ if(c.length>=2) allCoords.push(c); }
   }
 
-  // Step 2: build endpoint/intersection index
-  // Every coordinate that appears as an endpoint OR is shared by 2+ lines = junction
-  const ptCount = {}; // key -> count of line endpoints using this point
-  const key = c => Math.round(c[0]/SNAP)+','+Math.round(c[1]/SNAP);
-
-  allLines.forEach(coords => {
-    // Register start and end as endpoints
-    const sk = key(coords[0]);
-    const ek = key(coords[coords.length-1]);
-    ptCount[sk] = (ptCount[sk]||0) + 1;
-    ptCount[ek] = (ptCount[ek]||0) + 1;
-    // Register all intermediate vertices — if another line shares them = junction
-    for(let i=1;i<coords.length-1;i++){
-      const k = key(coords[i]);
-      if(!ptCount[k]) ptCount[k] = 0; // mark as known intermediate
-    }
+  // ── Step 2: find junction points ──
+  // A point is a junction if 3+ line endpoints share it, or it's used by 2+ different lines
+  const endCount = {};
+  allCoords.forEach(coords=>{
+    const sk=coordKey(coords[0]), ek=coordKey(coords[coords.length-1]);
+    endCount[sk]=(endCount[sk]||0)+1;
+    endCount[ek]=(endCount[ek]||0)+1;
   });
+  const isJunction = k => (endCount[k]||0) >= 2;
 
-  // Step 3: for each line, find split points (junctions = points used by 2+ lines)
-  // and split the line there, keeping full coordinate geometry per sub-segment
-  const rawSegs = []; // array of coordinate arrays
-
-  allLines.forEach(coords => {
-    let current = [coords[0]];
+  // ── Step 3: split each line at junction points → raw segments ──
+  const rawSegs = []; // each = array of coordinates
+  allCoords.forEach(coords=>{
+    let cur=[coords[0]];
     for(let i=1;i<coords.length;i++){
-      current.push(coords[i]);
-      const k = key(coords[i]);
-      // Split here if: this is an endpoint, or a junction (used by 2+ other lines)
-      const isEnd = i === coords.length-1;
-      const isJunction = (ptCount[k]||0) >= 2;
-      if((isEnd || isJunction) && current.length >= 2){
-        rawSegs.push([...current]);
-        // Start new sub-segment from this junction point
-        if(!isEnd) current = [coords[i]];
+      cur.push(coords[i]);
+      const k=coordKey(coords[i]);
+      const atEnd = i===coords.length-1;
+      const atJunction = isJunction(k);
+      if((atEnd||atJunction) && cur.length>=2){
+        rawSegs.push([...cur]);
+        if(!atEnd) cur=[coords[i]];
       }
     }
   });
 
-  // Step 4: build final segment objects
-  // For Space Syntax: use full junction-to-junction segment as-is
-  // For proximity: subdivide long segments at MAX_PROX_LEN so POI snapping is fine-grained
+  // ── Step 4: collinear merge ──
+  // Build adjacency: for each endpoint key, which rawSegs connect there?
+  const epMap = {}; // key → [segIdx, ...]
+  rawSegs.forEach((coords,i)=>{
+    const sk=coordKey(coords[0]), ek=coordKey(coords[coords.length-1]);
+    if(!epMap[sk])epMap[sk]=[];if(!epMap[ek])epMap[ek]=[];
+    epMap[sk].push(i); epMap[ek].push(i);
+  });
+
+  const merged = new Array(rawSegs.length).fill(false);
+  const mergedSegs = []; // final merged coordinate arrays
+
+  rawSegs.forEach((coords,i)=>{
+    if(merged[i]) return;
+    // Try to extend this segment forward by merging collinear neighbours
+    let chain = [...coords];
+    let changed = true;
+    while(changed){
+      changed=false;
+      const tailKey = coordKey(chain[chain.length-1]);
+      const neighbours = (epMap[tailKey]||[]).filter(j=>!merged[j]&&j!==i);
+      if(neighbours.length!==1) break; // junction (2+ options) or dead end — stop merging
+      const j=neighbours[0];
+      const jCoords=rawSegs[j];
+      // Check collinearity
+      const bA=lineBearing(chain);
+      const bB=lineBearing(jCoords);
+      if(bearingDiff(bA,bB)<=COLLINEAR_THRESH){
+        // Merge: append j's coords (skip first point which is shared)
+        const jc = coordKey(jCoords[0])===tailKey ? jCoords : [...jCoords].reverse();
+        chain = [...chain, ...jc.slice(1)];
+        merged[j]=true;
+        changed=true;
+      } else {
+        break; // angle too sharp — genuine turn, don't merge
+      }
+    }
+    mergedSegs.push(chain);
+    merged[i]=true;
+  });
+
+  // ── Step 5: build final segment objects ──
+  // Subdivide long merged segments for proximity accuracy
   const segs = [];
   let id = 0;
 
-  rawSegs.forEach(coords => {
-    if(coords.length < 2) return;
-    try {
+  mergedSegs.forEach(coords=>{
+    if(coords.length<2) return;
+    try{
       const line = turf.lineString(coords);
-      const len  = turf.length(line, {units:'meters'});
-      if(len < 1) return;
+      const len  = turf.length(line,{units:'meters'});
+      if(len<1) return;
 
-      if(len <= MAX_PROX_LEN) {
-        // Short enough — use as one segment
-        const mid = [
-          (coords[0][0] + coords[coords.length-1][0]) / 2,
-          (coords[0][1] + coords[coords.length-1][1]) / 2
-        ];
-        const seg = turf.lineString(coords);
-        initSeg(seg, id++, mid, len);
+      if(len<=MAX_PROX_LEN){
+        const mid=[(coords[0][0]+coords[coords.length-1][0])/2,(coords[0][1]+coords[coords.length-1][1])/2];
+        const seg=turf.lineString(coords);
+        initSeg(seg,id++,mid,len);
         segs.push(seg);
       } else {
-        // Long segment — subdivide for proximity accuracy
-        // But keep junctions intact: split evenly so endpoints stay at real junctions
-        const n    = Math.max(1, Math.ceil(len / MAX_PROX_LEN));
-        const step = len / n;
+        // Subdivide for proximity but keep full coords for SS graph connectivity
+        const n=Math.max(1,Math.ceil(len/MAX_PROX_LEN));
+        const step=len/n;
         for(let j=0;j<n;j++){
-          const s = turf.along(line, j*step,              {units:'meters'});
-          const e = turf.along(line, Math.min((j+1)*step, len), {units:'meters'});
+          const s=turf.along(line,j*step,{units:'meters'});
+          const e=turf.along(line,Math.min((j+1)*step,len),{units:'meters'});
           if(!s||!e) continue;
-          const sc = s.geometry.coordinates;
-          const ec = e.geometry.coordinates;
-          const mid = [(sc[0]+ec[0])/2, (sc[1]+ec[1])/2];
-          const sub = turf.lineString([sc, ec]);
-          const subLen = turf.length(sub, {units:'meters'});
-          initSeg(sub, id++, mid, subLen);
+          const sc=s.geometry.coordinates, ec=e.geometry.coordinates;
+          const sub=turf.lineString([sc,ec]);
+          const subLen=turf.length(sub,{units:'meters'});
+          initSeg(sub,id++,[(sc[0]+ec[0])/2,(sc[1]+ec[1])/2],subLen);
           segs.push(sub);
         }
       }
-    } catch(ex) {}
+    }catch(ex){}
   });
 
   return segs;
 }
 
-function initSeg(seg, id, mid, len) {
-  seg._id  = id;
-  seg._mid = mid;
-  seg._len = len;
-  seg._co=0; seg._coN=0; seg._li8=0; seg._gi=0; seg._ch=0; seg._gch=0; seg._ss=0;
-  seg._li8_raw=0; seg._ch1200_raw=0; seg._gi_raw=0; seg._gch_raw=0;
-  seg._px=0; seg._pxRaw=0; seg._pxDet={};
-  seg._final=0; seg._pwn='pwn4';
+function initSeg(seg,id,mid,len){
+  seg._id=id; seg._mid=mid; seg._len=len;
+  seg._co=0;seg._coN=0;
+  seg._li8=0;seg._li8_raw=0;
+  seg._gi=0;seg._gi_raw=0;
+  seg._ch=0;seg._ch1200_raw=0;
+  seg._gch=0;seg._gch_raw=0;
+  seg._ss=0;
+  seg._px=0;seg._pxRaw=0;seg._pxDet={};
+  seg._final=0;seg._pwn='pwn4';
 }
+
+// ── Study area size estimator ──
+// Estimates km² from a boundary polygon coordinate array
+function estimateAreaKm2(boundaryCoords){
+  if(!boundaryCoords||!boundaryCoords.length) return null;
+  try{
+    const ring=[...boundaryCoords,boundaryCoords[0]];
+    const poly=turf.polygon([ring]);
+    return turf.area(poly)/1e6; // m² → km²
+  }catch(e){return null;}
+}
+
+// ── Live segment count preview ──
+// Called after boundary is drawn — estimates segment count before analysis
+function previewSegmentCount(){
+  const city=activeCity!==null?cities[activeCity]:null;
+  if(!city||!city.network||!bounds.study) return;
+  try{
+    const clipped=clipNet(city.network, bounds.study);
+    const preview=segRoads(clipped);
+    const area=estimateAreaKm2(bounds.study.map(c=>[c[1],c[0]]));
+    const areaStr=area?(' · '+area.toFixed(1)+' km²'):'';
+    showToast('Study area: ~'+preview.length+' segments'+areaStr+' — '+
+      (preview.length>5000?'⚠ large, may be slow':'✓ good size'));
+  }catch(e){}
+}
+
 
 /* ════════════════════════════════════════════════
    GRAPH BUILDING — angular dual graph
@@ -1472,14 +1538,19 @@ async function runAnalysis(){
   const sSegs=segRoads(studyNet);
   if(!sSegs.length){document.getElementById('prog-overlay').style.display='none';showToast('No segments found — check file or boundary');return;}
 
-  // Safety cap — Space Syntax is O(n²), browser freezes beyond ~3000 segments
-  const MAX_SEGS = 8000; // junction-based segs are far fewer than 100m splits
+  // Safety cap — warn if too large for browser SS computation
+  const MAX_SEGS = 6000;
+  const studyAreaKm2 = bounds.study ? estimateAreaKm2(bounds.study.map(c=>[c[1],c[0]])) : null;
+  const areaMsg = studyAreaKm2 ? ' ('+studyAreaKm2.toFixed(1)+' km²)' : '';
+  setP(18, 'Segmented: '+sSegs.length+' segments'+areaMsg);
+  await sleep(600); // pause so user can see the count
   if(sSegs.length > MAX_SEGS){
     document.getElementById('prog-overlay').style.display='none';
-    showToast('⚠ '+sSegs.length+' segments — too large. Draw a smaller Study Area boundary first.');
-    alert('Too many segments ('+sSegs.length+'). The Space Syntax engine needs a Study Area boundary to work within.\n\nRecommended: draw a Study Area boundary covering 1–2 neighbourhoods (roughly 1–3 km²).\n\nJunction-based segmentation keeps counts manageable, but try a smaller study area.');
+    showToast('⚠ '+sSegs.length+' segments'+areaMsg+' — draw a smaller study area (target: under 5 km²)');
+    alert('Study area too large\n\n'+sSegs.length+' segments'+areaMsg+'\n\nTarget: under 5 km² / 2000 segments for reliable browser analysis.\n\nTip: draw a tighter Study Area boundary around 1-2 neighbourhoods.');
     return;
   }
+  showToast('✓ '+sSegs.length+' segments'+areaMsg+' — running analysis');
 
   setP(22,'Segmenting context roads...');await sleep(20);
   const cSegs=bounds.ctx?segRoads(ctxNet):sSegs;
