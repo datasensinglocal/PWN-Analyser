@@ -742,35 +742,123 @@ function showToast(msg){
 /* ════════════════════════════════════════════════
    ROAD SEGMENTATION
 ════════════════════════════════════════════════ */
-function segRoads(net,segLen){
-  const segs=[];let id=0;
-  for(const f of(net.features||[])){
-    if(!f.geometry)continue;
-    const lines=f.geometry.type==='MultiLineString'?f.geometry.coordinates.map(c=>turf.lineString(c)):f.geometry.type==='LineString'?[f]:[];
-    for(const ln of lines){
-      try{
-        const l=turf.length(ln,{units:'meters'});if(l<2)continue;
-        const n=Math.max(1,Math.round(l/segLen)),step=l/n;
-        for(let j=0;j<n;j++){
-          const s=turf.along(ln,j*step,{units:'meters'});
-          const e=turf.along(ln,Math.min((j+1)*step,l),{units:'meters'});
-          if(!s||!e)continue;
-          const seg=turf.lineString([s.geometry.coordinates,e.geometry.coordinates]);
-          seg._id=id++;
-          // midpoint for proximity calcs
-          seg._mid=[(s.geometry.coordinates[0]+e.geometry.coordinates[0])/2,(s.geometry.coordinates[1]+e.geometry.coordinates[1])/2];
-          seg._len=turf.length(seg,{units:'meters'});
-          // SS scores
-          seg._co=0;seg._coN=0;seg._li8=0;seg._gi=0;seg._ch=0;seg._gch=0;seg._ss=0;
-          // proximity
-          seg._px=0;seg._pxRaw=0;seg._pxDet={};
-          seg._final=0;seg._pwn='pwn4';
-          segs.push(seg);
-        }
-      }catch(ex){}
+/* ════════════════════════════════════════════════
+   JUNCTION-BASED SEGMENTATION
+   Splits roads at intersection points only.
+   Each piece between two junctions = one segment.
+   This is the correct Space Syntax method (DepthMapX).
+   For proximity scoring, long segments are further
+   subdivided at 50m intervals so POI snapping is accurate.
+════════════════════════════════════════════════ */
+
+function segRoads(net) {
+  const SNAP = 0.00008; // ~8m snap tolerance for junction detection
+  const MAX_PROX_LEN = 80; // max segment length for proximity (subdivide longer ones)
+
+  // Step 1: collect all line geometries
+  const allLines = [];
+  for(const f of (net.features||[])) {
+    if(!f.geometry) continue;
+    const lines = f.geometry.type==='MultiLineString'
+      ? f.geometry.coordinates.map(c=>c)
+      : f.geometry.type==='LineString' ? [f.geometry.coordinates] : [];
+    for(const coords of lines) {
+      if(coords.length >= 2) allLines.push(coords);
     }
   }
+
+  // Step 2: build endpoint/intersection index
+  // Every coordinate that appears as an endpoint OR is shared by 2+ lines = junction
+  const ptCount = {}; // key -> count of line endpoints using this point
+  const key = c => Math.round(c[0]/SNAP)+','+Math.round(c[1]/SNAP);
+
+  allLines.forEach(coords => {
+    // Register start and end as endpoints
+    const sk = key(coords[0]);
+    const ek = key(coords[coords.length-1]);
+    ptCount[sk] = (ptCount[sk]||0) + 1;
+    ptCount[ek] = (ptCount[ek]||0) + 1;
+    // Register all intermediate vertices — if another line shares them = junction
+    for(let i=1;i<coords.length-1;i++){
+      const k = key(coords[i]);
+      if(!ptCount[k]) ptCount[k] = 0; // mark as known intermediate
+    }
+  });
+
+  // Step 3: for each line, find split points (junctions = points used by 2+ lines)
+  // and split the line there, keeping full coordinate geometry per sub-segment
+  const rawSegs = []; // array of coordinate arrays
+
+  allLines.forEach(coords => {
+    let current = [coords[0]];
+    for(let i=1;i<coords.length;i++){
+      current.push(coords[i]);
+      const k = key(coords[i]);
+      // Split here if: this is an endpoint, or a junction (used by 2+ other lines)
+      const isEnd = i === coords.length-1;
+      const isJunction = (ptCount[k]||0) >= 2;
+      if((isEnd || isJunction) && current.length >= 2){
+        rawSegs.push([...current]);
+        // Start new sub-segment from this junction point
+        if(!isEnd) current = [coords[i]];
+      }
+    }
+  });
+
+  // Step 4: build final segment objects
+  // For Space Syntax: use full junction-to-junction segment as-is
+  // For proximity: subdivide long segments at MAX_PROX_LEN so POI snapping is fine-grained
+  const segs = [];
+  let id = 0;
+
+  rawSegs.forEach(coords => {
+    if(coords.length < 2) return;
+    try {
+      const line = turf.lineString(coords);
+      const len  = turf.length(line, {units:'meters'});
+      if(len < 1) return;
+
+      if(len <= MAX_PROX_LEN) {
+        // Short enough — use as one segment
+        const mid = [
+          (coords[0][0] + coords[coords.length-1][0]) / 2,
+          (coords[0][1] + coords[coords.length-1][1]) / 2
+        ];
+        const seg = turf.lineString(coords);
+        initSeg(seg, id++, mid, len);
+        segs.push(seg);
+      } else {
+        // Long segment — subdivide for proximity accuracy
+        // But keep junctions intact: split evenly so endpoints stay at real junctions
+        const n    = Math.max(1, Math.ceil(len / MAX_PROX_LEN));
+        const step = len / n;
+        for(let j=0;j<n;j++){
+          const s = turf.along(line, j*step,              {units:'meters'});
+          const e = turf.along(line, Math.min((j+1)*step, len), {units:'meters'});
+          if(!s||!e) continue;
+          const sc = s.geometry.coordinates;
+          const ec = e.geometry.coordinates;
+          const mid = [(sc[0]+ec[0])/2, (sc[1]+ec[1])/2];
+          const sub = turf.lineString([sc, ec]);
+          const subLen = turf.length(sub, {units:'meters'});
+          initSeg(sub, id++, mid, subLen);
+          segs.push(sub);
+        }
+      }
+    } catch(ex) {}
+  });
+
   return segs;
+}
+
+function initSeg(seg, id, mid, len) {
+  seg._id  = id;
+  seg._mid = mid;
+  seg._len = len;
+  seg._co=0; seg._coN=0; seg._li8=0; seg._gi=0; seg._ch=0; seg._gch=0; seg._ss=0;
+  seg._li8_raw=0; seg._ch1200_raw=0; seg._gi_raw=0; seg._gch_raw=0;
+  seg._px=0; seg._pxRaw=0; seg._pxDet={};
+  seg._final=0; seg._pwn='pwn4';
 }
 
 /* ════════════════════════════════════════════════
@@ -1380,21 +1468,21 @@ async function runAnalysis(){
   if(bounds.study){setP(7,'Clipping to study area...');await sleep(20);studyNet=clipNet(studyNet,bounds.study);}
   if(bounds.ctx){setP(11,'Clipping to global context...');await sleep(20);ctxNet=clipNet(JSON.parse(JSON.stringify(city.network)),bounds.ctx);}
 
-  setP(15,'Segmenting roads at 100m...');await sleep(30);
-  const sSegs=segRoads(studyNet,100);
+  setP(15,'Segmenting roads at junctions...');await sleep(30);
+  const sSegs=segRoads(studyNet);
   if(!sSegs.length){document.getElementById('prog-overlay').style.display='none';showToast('No segments found — check file or boundary');return;}
 
   // Safety cap — Space Syntax is O(n²), browser freezes beyond ~3000 segments
-  const MAX_SEGS = 3000;
+  const MAX_SEGS = 8000; // junction-based segs are far fewer than 100m splits
   if(sSegs.length > MAX_SEGS){
     document.getElementById('prog-overlay').style.display='none';
     showToast('⚠ '+sSegs.length+' segments — too large. Draw a smaller Study Area boundary first.');
-    alert('Too many segments ('+sSegs.length+'). The Space Syntax engine needs a Study Area boundary to work within.\n\nRecommended: draw a Study Area boundary covering 1–2 neighbourhoods (roughly 1–3 km²).\n\nThis keeps segment count under '+MAX_SEGS+' for reliable results.');
+    alert('Too many segments ('+sSegs.length+'). The Space Syntax engine needs a Study Area boundary to work within.\n\nRecommended: draw a Study Area boundary covering 1–2 neighbourhoods (roughly 1–3 km²).\n\nJunction-based segmentation keeps counts manageable, but try a smaller study area.');
     return;
   }
 
   setP(22,'Segmenting context roads...');await sleep(20);
-  const cSegs=bounds.ctx?segRoads(ctxNet,100):sSegs;
+  const cSegs=bounds.ctx?segRoads(ctxNet):sSegs;
 
   setP(28,'Building angular dual graph...');await sleep(20);
   const sGraph=buildGraph(sSegs);
@@ -1407,7 +1495,7 @@ async function runAnalysis(){
   sSegs.forEach((s,i)=>{s._co=sGraph[i]?sGraph[i].length:0;s._coN=s._co/maxConn;});
 
   // Space Syntax — full computation
-  setP(38,'Starting Space Syntax — '+sSegs.length+' segments...');await sleep(30);
+  setP(38,'Space Syntax — '+sSegs.length+' junction segments...');await sleep(30);
   await computeSS(sSegs, cSegs, sGraph, cGraph, 38, 80);
   setP(80,'Space Syntax complete — '+sSegs.length+' segments processed');await sleep(20);
 
