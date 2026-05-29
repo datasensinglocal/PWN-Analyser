@@ -835,94 +835,158 @@ Heap.prototype.pop=function(){
 };
 Heap.prototype.empty=function(){return!this.h.length;};
 
-// Async SS engine — yields every BATCH origins so browser stays responsive
-async function runSS(segs, graph, metRadius, onProgress) {
-  const n = segs.length;
+/* ════════════════════════════════════════════════
+   SPACE SYNTAX ENGINE — Web Worker
+   Runs full angular Dijkstra off main thread
+   so the browser never freezes
+════════════════════════════════════════════════ */
+
+// The worker code as a string — embedded so no extra file needed
+const WORKER_CODE = `
+/* ── Min-heap ── */
+function Heap(){this.h=[];}
+Heap.prototype.push=function(n){
+  this.h.push(n);let i=this.h.length-1;
+  while(i>0){const p=(i-1)>>1;if(this.h[p].a<=this.h[i].a)break;const t=this.h[p];this.h[p]=this.h[i];this.h[i]=t;i=p;}
+};
+Heap.prototype.pop=function(){
+  const top=this.h[0],last=this.h.pop();
+  if(this.h.length){this.h[0]=last;let i=0;
+    while(true){let s=i,l=2*i+1,r=2*i+2;
+      if(l<this.h.length&&this.h[l].a<this.h[s].a)s=l;
+      if(r<this.h.length&&this.h[r].a<this.h[s].a)s=r;
+      if(s===i)break;const t=this.h[s];this.h[s]=this.h[i];this.h[i]=t;i=s;
+    }
+  }
+  return top;
+};
+Heap.prototype.empty=function(){return!this.h.length;};
+
+function runSS(graph, n, metRadius) {
   const totDepth = new Float64Array(n);
   const nodeCnt  = new Float64Array(n);
   const choice   = new Float64Array(n);
-  const BATCH    = 50; // yield every 50 origins
+  const REPORT   = 100; // post progress every N origins
 
-  function dijkstra(src) {
+  for(let src=0; src<n; src++){
     const aD   = new Float32Array(n).fill(Infinity);
     const mD   = new Float32Array(n).fill(Infinity);
     const pred = new Int32Array(n).fill(-1);
-    aD[src] = 0; mD[src] = 0;
-    const pq = new Heap(); pq.push({i:src, a:0, m:0});
-    while (!pq.empty()) {
-      const {i, a, m} = pq.pop();
-      if (a > aD[i]) continue;
-      for (const {to, ang, met} of graph[i]) {
-        const nm = m + met;
-        if (metRadius !== Infinity && nm > metRadius) continue;
-        const na = a + ang;
-        if (na < aD[to]) { aD[to]=na; mD[to]=nm; pred[to]=i; pq.push({i:to,a:na,m:nm}); }
+    aD[src]=0; mD[src]=0;
+    const pq = new Heap(); pq.push({i:src,a:0,m:0});
+    while(!pq.empty()){
+      const{i,a,m}=pq.pop();
+      if(a>aD[i])continue;
+      const edges=graph[i];
+      for(let e=0;e<edges.length;e++){
+        const{to,ang,met}=edges[e];
+        const nm=m+met;
+        if(metRadius!==Infinity&&nm>metRadius)continue;
+        const na=a+ang;
+        if(na<aD[to]){aD[to]=na;mD[to]=nm;pred[to]=i;pq.push({i:to,a:na,m:nm});}
       }
     }
-    return {aD, pred};
+    // Accumulate
+    for(let dst=0;dst<n;dst++){
+      if(dst===src||aD[dst]===Infinity)continue;
+      totDepth[dst]+=aD[dst]; nodeCnt[dst]++;
+      let cur=pred[dst];
+      while(cur!==-1&&cur!==src){choice[cur]++;cur=pred[cur];}
+    }
+    // Report progress every REPORT origins
+    if(src%REPORT===0){
+      self.postMessage({type:'progress', src, n});
+    }
   }
+  return {
+    totDepth: Array.from(totDepth),
+    nodeCnt:  Array.from(nodeCnt),
+    choice:   Array.from(choice)
+  };
+}
 
-  for (let src = 0; src < n; src++) {
-    const {aD, pred} = dijkstra(src);
-    for (let dst = 0; dst < n; dst++) {
-      if (dst === src || aD[dst] === Infinity) continue;
-      totDepth[dst] += aD[dst]; nodeCnt[dst]++;
-      let cur = pred[dst];
-      while (cur !== -1 && cur !== src) { choice[cur]++; cur = pred[cur]; }
-    }
-    // Yield to browser every BATCH origins to update UI + avoid freeze
-    if (src % BATCH === 0) {
-      if (onProgress) onProgress(src / n);
-      await new Promise(r => setTimeout(r, 0));
-    }
-  }
-  return {totDepth, nodeCnt, choice};
+self.onmessage = function(e){
+  const{graph, n, metRadius, runId} = e.data;
+  const result = runSS(graph, n, metRadius);
+  self.postMessage({type:'done', result, runId});
+};
+`;
+
+// Create worker from blob — no external file needed
+function makeSSWorker() {
+  const blob = new Blob([WORKER_CODE], {type:'application/javascript'});
+  return new Worker(URL.createObjectURL(blob));
+}
+
+// Run one SS pass in a worker, return promise with progress updates
+function runSSInWorker(graph, n, metRadius, label, pctFrom, pctTo) {
+  return new Promise((resolve, reject) => {
+    const worker = makeSSWorker();
+    worker.onmessage = function(e) {
+      const {type, src, result} = e.data;
+      if(type === 'progress') {
+        const pct = pctFrom + (pctTo - pctFrom) * (src / n);
+        setP(pct, label + ' — ' + src + '/' + n + ' origins');
+      } else if(type === 'done') {
+        worker.terminate();
+        resolve(e.data.result);
+      }
+    };
+    worker.onerror = function(err) {
+      worker.terminate();
+      reject(err);
+    };
+    // Send graph as plain arrays (transferable-friendly)
+    worker.postMessage({graph, n, metRadius, runId: label});
+  });
 }
 
 async function computeSS(sSegs, cSegs, sGraph, cGraph, pctStart, pctEnd) {
-  const n = sSegs.length;
-  const pctRange = pctEnd - pctStart;
+  const n    = sSegs.length;
+  const cn   = cSegs.length;
+  const span = pctEnd - pctStart;
 
-  // NAIN + NACH R800 (pctStart → pctStart+30%)
-  setP(pctStart + pctRange*0.0, 'NAIN R800 — 0/' + n + ' origins...');
-  const r800 = await runSS(sSegs, sGraph, 800, p => {
-    setP(pctStart + pctRange*0.30*p, 'NAIN R800 — '+Math.round(p*n)+'/'+n+' origins...');
-  });
-  sSegs.forEach((s,i) => {
+  // Serialise graphs to plain arrays for worker transfer
+  function serGraph(graph){ return graph.map(edges => edges.map(({to,ang,met})=>({to,ang,met}))); }
+  const sG = serGraph(sGraph);
+  const cG = (cSegs === sSegs) ? sG : serGraph(cGraph);
+
+  // ── NAIN R800 ── (pctStart → +30%)
+  setP(pctStart, 'NAIN R800 — starting...');
+  const r800 = await runSSInWorker(sG, n, 800,
+    'NAIN R800', pctStart, pctStart + span*0.30);
+  sSegs.forEach((s,i)=>{
     const nc=r800.nodeCnt[i], td=r800.totDepth[i];
-    s._li8_raw  = nc>0 ? Math.pow(nc,1.2)/(td+2) : 0;
+    s._li8_raw = nc>0 ? Math.pow(nc,1.2)/(td+2) : 0;
   });
 
-  // NACH R1200 (pctStart+30% → pctStart+55%)
-  setP(pctStart + pctRange*0.30, 'NACH R1200 — 0/'+n+' origins...');
-  const r1200 = await runSS(sSegs, sGraph, 1200, p => {
-    setP(pctStart + pctRange*0.30 + pctRange*0.25*p, 'NACH R1200 — '+Math.round(p*n)+'/'+n+' origins...');
-  });
-  sSegs.forEach((s,i) => {
+  // ── NACH R1200 ── (+30% → +55%)
+  setP(pctStart + span*0.30, 'NACH R1200 — starting...');
+  const r1200 = await runSSInWorker(sG, n, 1200,
+    'NACH R1200', pctStart + span*0.30, pctStart + span*0.55);
+  sSegs.forEach((s,i)=>{
     const td=r1200.totDepth[i];
     s._ch1200_raw = td>0 ? Math.log(r1200.choice[i]+1)/Math.log(td+3) : 0;
   });
 
-  // Global Rn on context segs (pctStart+55% → pctEnd)
-  const ctxN = cSegs.length;
-  setP(pctStart + pctRange*0.55, 'Global NAIN/NACH — 0/'+ctxN+' origins...');
-  const rn = await runSS(cSegs, cGraph, Infinity, p => {
-    setP(pctStart + pctRange*0.55 + pctRange*0.45*p, 'Global NAIN/NACH — '+Math.round(p*ctxN)+'/'+ctxN+' origins...');
-  });
+  // ── Global NAIN + NACH Rn ── (+55% → +100%)
+  setP(pctStart + span*0.55, 'Global Integration — starting...');
+  const rn = await runSSInWorker(cG, cn, Infinity,
+    'Global NAIN/NACH', pctStart + span*0.55, pctEnd);
 
-  if (cSegs === sSegs) {
-    sSegs.forEach((s,i) => {
+  if(cSegs === sSegs){
+    sSegs.forEach((s,i)=>{
       const nc=rn.nodeCnt[i], td=rn.totDepth[i];
       s._gi_raw  = nc>0 ? Math.pow(nc,1.2)/(td+2) : 0;
       s._gch_raw = td>0 ? Math.log(rn.choice[i]+1)/Math.log(td+3) : 0;
     });
   } else {
-    const ctxMids   = cSegs.map(cs => cs._mid);
-    const giScores  = cSegs.map((cs,ci) => { const nc=rn.nodeCnt[ci],td=rn.totDepth[ci]; return nc>0?Math.pow(nc,1.2)/(td+2):0; });
-    const gchScores = cSegs.map((cs,ci) => { const td=rn.totDepth[ci]; return td>0?Math.log(rn.choice[ci]+1)/Math.log(td+3):0; });
-    sSegs.forEach(ss => {
+    const ctxMids   = cSegs.map(cs=>cs._mid);
+    const giScores  = cSegs.map((_,ci)=>{ const nc=rn.nodeCnt[ci],td=rn.totDepth[ci]; return nc>0?Math.pow(nc,1.2)/(td+2):0; });
+    const gchScores = cSegs.map((_,ci)=>{ const td=rn.totDepth[ci]; return td>0?Math.log(rn.choice[ci]+1)/Math.log(td+3):0; });
+    sSegs.forEach(ss=>{
       const mid=ss._mid; let bestGi=0,bestGch=0,bestD=Infinity;
-      ctxMids.forEach((cm,ci) => {
+      ctxMids.forEach((cm,ci)=>{
         const d=(mid[0]-cm[0])**2+(mid[1]-cm[1])**2;
         if(d<bestD){bestD=d;bestGi=giScores[ci];bestGch=gchScores[ci];}
       });
@@ -931,7 +995,7 @@ async function computeSS(sSegs, cSegs, sGraph, cGraph, pctStart, pctEnd) {
   }
 
   // Normalise 0-1
-  const norm=(segs,raw,field)=>{const mx=Math.max(1,...segs.map(s=>s[raw]));segs.forEach(s=>{s[field]=s[raw]/mx;});};
+  const norm=(arr,raw,field)=>{const mx=Math.max(1,...arr.map(s=>s[raw]));arr.forEach(s=>{s[field]=s[raw]/mx;});};
   norm(sSegs,'_li8_raw','_li8');
   norm(sSegs,'_ch1200_raw','_ch');
   norm(sSegs,'_gi_raw','_gi');
