@@ -163,13 +163,28 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
 .idiv{border:none;border-top:1px solid #1c1c1c;margin:5px 0}
 
 /* progress */
-.prog-overlay{position:absolute;inset:0;background:rgba(8,8,8,.9);z-index:1000;display:none;align-items:center;justify-content:center}
-.prog-box{background:#131313;border:1px solid #252525;border-radius:8px;padding:24px 32px;text-align:center;min-width:260px}
-.prog-title{font-size:14px;font-weight:300;color:#e2ddd6;margin-bottom:4px}
-.prog-step{font-size:10px;color:#484848;margin-bottom:14px;font-family:monospace;min-height:14px}
-.prog-track{height:2px;background:#252525;border-radius:2px;overflow:hidden}
-.prog-fill{height:100%;background:#c8a96e;border-radius:2px;transition:width .25s}
-.prog-pct{font-size:11px;color:#c8a96e;font-family:monospace;margin-top:5px}
+.prog-overlay{position:absolute;inset:0;background:rgba(8,8,8,.7);z-index:1000;display:none;align-items:flex-end;justify-content:flex-start;padding:20px;pointer-events:none}
+.prog-box{background:rgba(13,13,13,.97);border:1px solid #2a2a2a;border-radius:8px;padding:16px 18px;min-width:300px;max-width:380px;pointer-events:all}
+.prog-title{font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#c8a96e;margin-bottom:10px}
+.prog-phases{margin-bottom:10px}
+.prog-phase-row{display:flex;align-items:center;gap:8px;margin-bottom:5px;font-size:11px}
+.prog-phase-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;background:#252525;transition:background .3s}
+.prog-phase-dot.done{background:#4a8a4a}
+.prog-phase-dot.active{background:#c8a96e;animation:pulse-dot 1s infinite}
+.prog-phase-dot.pending{background:#252525}
+.prog-phase-name{color:#484848;flex:1;transition:color .3s}
+.prog-phase-name.done{color:#4a8a4a}
+.prog-phase-name.active{color:#e2ddd6}
+.prog-phase-count{font-size:10px;font-family:monospace;color:#484848;text-align:right}
+.prog-phase-count.active{color:#c8a96e}
+@keyframes pulse-dot{0%,100%{opacity:1}50%{opacity:.3}}
+.prog-current{font-size:10px;color:#555;font-family:monospace;margin-bottom:8px;min-height:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.prog-track{height:2px;background:#1a1a1a;border-radius:2px;overflow:hidden;margin-bottom:5px}
+.prog-fill{height:100%;background:#c8a96e;border-radius:2px;transition:width .15s}
+.prog-footer{display:flex;justify-content:space-between;align-items:center}
+.prog-pct{font-size:11px;color:#c8a96e;font-family:monospace}
+.prog-time{font-size:10px;color:#484848;font-family:monospace}
+.prog-seg-count{font-size:10px;color:#484848;font-family:monospace}
 
 .basemap-switcher{display:flex;gap:3px;background:rgba(13,13,13,.92);border:1px solid #2a2a2a;border-radius:4px;padding:3px;backdrop-filter:blur(4px)}
 .basemap-btn{padding:4px 8px;font-size:9px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;border:1px solid transparent;border-radius:3px;background:none;color:#666;cursor:pointer;font-family:inherit;transition:all .15s;white-space:nowrap}
@@ -350,9 +365,55 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
   <div class="prog-overlay" id="prog-overlay">
     <div class="prog-box">
       <div class="prog-title">Running Analysis</div>
-      <div class="prog-step" id="prog-step">Initialising...</div>
+      <div class="prog-phases" id="prog-phases">
+        <div class="prog-phase-row" id="ph-seg">
+          <div class="prog-phase-dot pending" id="ph-seg-dot"></div>
+          <span class="prog-phase-name pending" id="ph-seg-name">Segmenting roads</span>
+          <span class="prog-phase-count" id="ph-seg-count"></span>
+        </div>
+        <div class="prog-phase-row" id="ph-conn">
+          <div class="prog-phase-dot pending" id="ph-conn-dot"></div>
+          <span class="prog-phase-name pending" id="ph-conn-name">Connectivity</span>
+          <span class="prog-phase-count" id="ph-conn-count"></span>
+        </div>
+        <div class="prog-phase-row" id="ph-nain800">
+          <div class="prog-phase-dot pending" id="ph-nain800-dot"></div>
+          <span class="prog-phase-name pending" id="ph-nain800-name">NAIN R800 — Local Integration</span>
+          <span class="prog-phase-count" id="ph-nain800-count"></span>
+        </div>
+        <div class="prog-phase-row" id="ph-nach1200">
+          <div class="prog-phase-dot pending" id="ph-nach1200-dot"></div>
+          <span class="prog-phase-name pending" id="ph-nach1200-name">NACH R1200 — Local Choice</span>
+          <span class="prog-phase-count" id="ph-nach1200-count"></span>
+        </div>
+        <div class="prog-phase-row" id="ph-r2500">
+          <div class="prog-phase-dot pending" id="ph-r2500-dot"></div>
+          <span class="prog-phase-name pending" id="ph-r2500-name">City-scale Integration R2500</span>
+          <span class="prog-phase-count" id="ph-r2500-count"></span>
+        </div>
+        <div class="prog-phase-row" id="ph-prox">
+          <div class="prog-phase-dot pending" id="ph-prox-dot"></div>
+          <span class="prog-phase-name pending" id="ph-prox-name">Trip Attractor Proximity</span>
+          <span class="prog-phase-count" id="ph-prox-count"></span>
+        </div>
+        <div class="prog-phase-row" id="ph-grade">
+          <div class="prog-phase-dot pending" id="ph-grade-dot"></div>
+          <span class="prog-phase-name pending" id="ph-grade-name">Grading PWN</span>
+          <span class="prog-phase-count" id="ph-grade-count"></span>
+        </div>
+        <div class="prog-phase-row" id="ph-reveal">
+          <div class="prog-phase-dot pending" id="ph-reveal-dot"></div>
+          <span class="prog-phase-name pending" id="ph-reveal-name">Animated reveal</span>
+          <span class="prog-phase-count" id="ph-reveal-count"></span>
+        </div>
+      </div>
+      <div class="prog-current" id="prog-step">Initialising...</div>
       <div class="prog-track"><div class="prog-fill" id="prog-fill" style="width:0%"></div></div>
-      <div class="prog-pct" id="prog-pct">0%</div>
+      <div class="prog-footer">
+        <span class="prog-pct" id="prog-pct">0%</span>
+        <span class="prog-time" id="prog-time"></span>
+        <span class="prog-seg-count" id="prog-seg-count"></span>
+      </div>
     </div>
   </div>
   <div class="phase-label" id="phase-label">
@@ -773,10 +834,59 @@ function toggleBase(){
 /* ════════════════════════════════════════════════
    PROGRESS
 ════════════════════════════════════════════════ */
-function setP(pct,msg){
-  document.getElementById('prog-fill').style.width=pct+'%';
-  document.getElementById('prog-step').textContent=msg;
-  document.getElementById('prog-pct').textContent=Math.round(pct)+'%';
+// Phase state tracking
+const PHASES = ['seg','conn','nain800','nach1200','r2500','prox','grade','reveal'];
+let _currentPhase = null;
+let _analysisStart = null;
+
+function setPhase(phaseId, count){
+  // Mark previous as done
+  if(_currentPhase && _currentPhase !== phaseId){
+    const prev = document.getElementById('ph-'+_currentPhase+'-dot');
+    const prevN = document.getElementById('ph-'+_currentPhase+'-name');
+    if(prev){ prev.className='prog-phase-dot done'; }
+    if(prevN){ prevN.className='prog-phase-name done'; }
+  }
+  _currentPhase = phaseId;
+  const dot  = document.getElementById('ph-'+phaseId+'-dot');
+  const name = document.getElementById('ph-'+phaseId+'-name');
+  const cnt  = document.getElementById('ph-'+phaseId+'-count');
+  if(dot)  dot.className  = 'prog-phase-dot active';
+  if(name) name.className = 'prog-phase-name active';
+  if(cnt && count) cnt.textContent = count;
+  if(cnt) cnt.className = 'prog-phase-count active';
+}
+
+function setPhaseCount(phaseId, count){
+  const cnt = document.getElementById('ph-'+phaseId+'-count');
+  if(cnt) cnt.textContent = count;
+}
+
+function setP(pct, msg, phaseId, count){
+  document.getElementById('prog-fill').style.width = pct+'%';
+  document.getElementById('prog-step').textContent = msg;
+  document.getElementById('prog-pct').textContent  = Math.round(pct)+'%';
+  // Elapsed time
+  if(_analysisStart){
+    const elapsed = Math.round((Date.now()-_analysisStart)/1000);
+    document.getElementById('prog-time').textContent = elapsed+'s elapsed';
+  }
+  if(phaseId) setPhase(phaseId, count);
+}
+
+function startAnalysisClock(){
+  _analysisStart = Date.now();
+  _currentPhase  = null;
+  // Reset all phases to pending
+  PHASES.forEach(p=>{
+    const dot  = document.getElementById('ph-'+p+'-dot');
+    const name = document.getElementById('ph-'+p+'-name');
+    const cnt  = document.getElementById('ph-'+p+'-count');
+    if(dot)  dot.className  = 'prog-phase-dot pending';
+    if(name) name.className = 'prog-phase-name pending';
+    if(cnt)  cnt.textContent = '';
+    if(cnt)  cnt.className  = 'prog-phase-count';
+  });
 }
 function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
 function showToast(msg){
@@ -1058,10 +1168,11 @@ Heap.prototype.pop=function(){
 Heap.prototype.empty=function(){return!this.h.length;};
 
 function runSS(graph, n, metRadius) {
+  const startTime = Date.now();
   const totDepth = new Float64Array(n);
   const nodeCnt  = new Float64Array(n);
   const choice   = new Float64Array(n);
-  const REPORT   = 100; // post progress every N origins
+  const REPORT   = 10; // post progress every N origins for smooth bar
 
   for(let src=0; src<n; src++){
     const aD   = new Float32Array(n).fill(Infinity);
@@ -1090,7 +1201,10 @@ function runSS(graph, n, metRadius) {
     }
     // Report progress every REPORT origins
     if(src%REPORT===0){
-      self.postMessage({type:'progress', src, n});
+      const elapsed = Date.now() - startTime;
+      const rate = src > 0 ? elapsed/src : 0;
+      const remaining = rate > 0 ? Math.round((n-src)*rate/1000) : 0;
+      self.postMessage({type:'progress', src, n, remaining});
     }
   }
   return {
@@ -1121,7 +1235,9 @@ function runSSInWorker(graph, n, metRadius, label, pctFrom, pctTo) {
       const {type, src, result} = e.data;
       if(type === 'progress') {
         const pct = pctFrom + (pctTo - pctFrom) * (src / n);
-        setP(pct, label + ' — ' + src + '/' + n + ' origins');
+        const remStr = e.data.remaining > 0 ? '  (~'+e.data.remaining+'s left)' : '';
+        const phId = label.includes('R800')?'nain800':label.includes('R1200')?'nach1200':'r2500';
+        setP(pct, label + ' — ' + src + '/' + n + ' origins' + remStr, phId, src+'/'+n);
       } else if(type === 'done') {
         worker.terminate();
         resolve(e.data.result);
@@ -1149,16 +1265,16 @@ async function computeSS(sSegs, cSegs, sGraph, cGraph, pctStart, pctEnd) {
   // ── NAIN R800 ── (pctStart → +30%)
   setP(pctStart, 'NAIN R800 — starting...');
   const r800 = await runSSInWorker(sG, n, 800,
-    'NAIN R800', pctStart, pctStart + span*0.30);
+    'NAIN R800', pctStart, pctStart + span*0.40);
   sSegs.forEach((s,i)=>{
     const nc=r800.nodeCnt[i], td=r800.totDepth[i];
     s._li8_raw = nc>0 ? Math.pow(nc,1.2)/(td+2) : 0;
   });
 
   // ── NACH R1200 ── (+30% → +55%)
-  setP(pctStart + span*0.30, 'NACH R1200 — starting...');
+  setP(pctStart + span*0.40, 'NACH R1200 — starting...','nach1200');
   const r1200 = await runSSInWorker(sG, n, 1200,
-    'NACH R1200', pctStart + span*0.30, pctStart + span*0.55);
+    'NACH R1200', pctStart + span*0.40, pctStart + span*0.70);
   sSegs.forEach((s,i)=>{
     const td=r1200.totDepth[i];
     s._ch1200_raw = td>0 ? Math.log(r1200.choice[i]+1)/Math.log(td+3) : 0;
@@ -1167,9 +1283,9 @@ async function computeSS(sSegs, cSegs, sGraph, cGraph, pctStart, pctEnd) {
   // ── City-scale NAIN + NACH R2500 ── (+55% → +100%)
   // R2500 is a practical city-scale proxy — segments 2.5km away
   // have negligible influence on pedestrian decisions anyway
-  setP(pctStart + span*0.55, 'City-scale Integration R2500 — starting...');
+  setP(pctStart + span*0.70, 'City-scale Integration R2500 — starting...','r2500');
   const rn = await runSSInWorker(cG, cn, 2500,
-    'City-scale NAIN/NACH R2500', pctStart + span*0.55, pctEnd);
+    'City-scale NAIN/NACH R2500', pctStart + span*0.70, pctEnd);
 
   if(cSegs === sSegs){
     sSegs.forEach((s,i)=>{
@@ -1570,6 +1686,7 @@ async function runAnalysis(){
   const wN=wRaw.map(v=>v/wTot);
 
   document.getElementById('prog-overlay').style.display='flex';
+  startAnalysisClock();
   setP(3,'Preparing networks...');await sleep(30);
 
   let studyNet=JSON.parse(JSON.stringify(city.network));
@@ -1577,7 +1694,7 @@ async function runAnalysis(){
   if(bounds.study){setP(7,'Clipping to study area...');await sleep(20);studyNet=clipNet(studyNet,bounds.study);}
   if(bounds.ctx){setP(11,'Clipping to global context...');await sleep(20);ctxNet=clipNet(JSON.parse(JSON.stringify(city.network)),bounds.ctx);}
 
-  setP(15,'Segmenting roads at junctions...');await sleep(30);
+  setP(15,'Segmenting roads at junctions...','seg');await sleep(30);
   const sSegs=segRoads(studyNet);
   if(!sSegs.length){document.getElementById('prog-overlay').style.display='none';showToast('No segments found — check file or boundary');return;}
 
@@ -1585,7 +1702,7 @@ async function runAnalysis(){
   const MAX_SEGS = 6000;
   const studyAreaKm2 = bounds.study ? estimateAreaKm2(bounds.study.map(c=>[c[1],c[0]])) : null;
   const areaMsg = studyAreaKm2 ? ' ('+studyAreaKm2.toFixed(1)+' km²)' : '';
-  setP(18, 'Segmented: '+sSegs.length+' segments'+areaMsg);
+  setP(18,'Segmented: '+sSegs.length+' segments'+areaMsg,'seg',sSegs.length+' segs'+areaMsg);
   await sleep(600); // pause so user can see the count
   if(sSegs.length > MAX_SEGS){
     document.getElementById('prog-overlay').style.display='none';
@@ -1604,27 +1721,29 @@ async function runAnalysis(){
   lastGraph=sGraph;
 
   // Connectivity
-  setP(33,'Computing connectivity...');await sleep(10);
+  setP(33,'Computing connectivity...','conn');await sleep(10);
+  setPhaseCount('conn',sSegs.filter((_,i)=>sGraph[i]&&sGraph[i].length>0).length+' connected');
   const maxConn=Math.max(1,...sSegs.map((s,i)=>sGraph[i]?sGraph[i].length:0));
   sSegs.forEach((s,i)=>{s._co=sGraph[i]?sGraph[i].length:0;s._coN=s._co/maxConn;});
 
   // Space Syntax — full computation
-  setP(38,'Space Syntax — '+sSegs.length+' junction segments...');await sleep(30);
+  setP(38,'Space Syntax — '+sSegs.length+' junction segments...','nain800');await sleep(30);
   await computeSS(sSegs, cSegs, sGraph, cGraph, 38, 80);
-  setP(80,'Space Syntax complete — '+sSegs.length+' segments processed');await sleep(20);
+  setP(80,'Space Syntax complete','r2500',sSegs.length+' segs scored');await sleep(20);
 
   // Proximity — snap-to-network
-  setP(80,'Computing proximity — snapping to network...');await sleep(20);
+  setP(80,'Computing proximity — snapping to network...','prox');await sleep(20);
   const attConfigs=atts.map((a,i)=>({...a,vis:attVis[i]!==false}));
   computeProximity(sSegs,sGraph,attConfigs);
 
   // Grade
-  setP(92,'Grading PWN — 4 tiers...');await sleep(20);
+  setP(92,'Grading PWN — 4 tiers...','grade');await sleep(20);
   grade(sSegs,ssW,proxW,p1t,p2t,p3t,wN);
   segments=sSegs;
 
   // Hide progress overlay — animated reveal takes over
-  setP(100,'Complete');await sleep(200);
+  setP(99,'Animating results...','reveal');
+  await sleep(200);
   document.getElementById('prog-overlay').style.display='none';
 
   // Animated layer-by-layer reveal
