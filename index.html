@@ -1685,6 +1685,149 @@ function updateStats(segs){
 }
 
 /* ════════════════════════════════════════════════
+   UTILITIES — sleep, toast, progress, weights
+════════════════════════════════════════════════ */
+
+function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
+
+function showToast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'),2800);
+}
+
+/* ── Rich progress tracker ── */
+const PHASES=['seg','conn','nain800','nach1200','r2500','prox','grade','reveal'];
+let _currentPhase=null, _analysisStart=null;
+
+function setPhase(phaseId,count){
+  if(_currentPhase&&_currentPhase!==phaseId){
+    const pd=document.getElementById('ph-'+_currentPhase+'-dot');
+    const pn=document.getElementById('ph-'+_currentPhase+'-name');
+    if(pd) pd.className='prog-phase-dot done';
+    if(pn) pn.className='prog-phase-name done';
+  }
+  _currentPhase=phaseId;
+  const dot =document.getElementById('ph-'+phaseId+'-dot');
+  const name=document.getElementById('ph-'+phaseId+'-name');
+  const cnt =document.getElementById('ph-'+phaseId+'-count');
+  if(dot)  dot.className ='prog-phase-dot active';
+  if(name) name.className='prog-phase-name active';
+  if(cnt&&count){ cnt.textContent=count; cnt.className='prog-phase-count active'; }
+}
+
+function setPhaseCount(phaseId,count){
+  const cnt=document.getElementById('ph-'+phaseId+'-count');
+  if(cnt) cnt.textContent=count;
+}
+
+function setP(pct,msg,phaseId,count){
+  const fill=document.getElementById('prog-fill');
+  const step=document.getElementById('prog-step');
+  const pctEl=document.getElementById('prog-pct');
+  const timeEl=document.getElementById('prog-time');
+  if(fill) fill.style.width=pct+'%';
+  if(step) step.textContent=msg;
+  if(pctEl) pctEl.textContent=Math.round(pct)+'%';
+  if(timeEl&&_analysisStart){
+    const elapsed=Math.round((Date.now()-_analysisStart)/1000);
+    timeEl.textContent=elapsed+'s elapsed';
+  }
+  if(phaseId) setPhase(phaseId,count);
+}
+
+function startAnalysisClock(){
+  _analysisStart=Date.now();
+  _currentPhase=null;
+  PHASES.forEach(p=>{
+    const dot =document.getElementById('ph-'+p+'-dot');
+    const name=document.getElementById('ph-'+p+'-name');
+    const cnt =document.getElementById('ph-'+p+'-count');
+    if(dot)  dot.className ='prog-phase-dot pending';
+    if(name) name.className='prog-phase-name pending';
+    if(cnt){ cnt.textContent=''; cnt.className='prog-phase-count'; }
+  });
+}
+
+/* ── Weights sync ── */
+function syncSSW(){
+  const keys=['conn','li8','gi','ch','gch'];
+  const vals=keys.map(k=>parseInt(document.getElementById('w-'+k).value));
+  const tot=vals.reduce((s,v)=>s+v,0);
+  keys.forEach((k,i)=>{ const el=document.getElementById('wv-'+k); if(el) el.textContent=vals[i]+'%'; });
+  const tel=document.getElementById('ss-total');
+  if(tel){ tel.textContent='Total: '+tot+'%'; tel.className='ss-total'+(tot!==100?' warn':''); }
+}
+function syncFW(){
+  const v=parseInt(document.getElementById('ssfw').value);
+  document.getElementById('ssfw-v').textContent=v+'%';
+  document.getElementById('proxw').value=100-v;
+  document.getElementById('proxw-v').textContent=(100-v)+'%';
+}
+function syncFWB(){
+  const v=parseInt(document.getElementById('proxw').value);
+  document.getElementById('proxw-v').textContent=v+'%';
+  document.getElementById('ssfw').value=100-v;
+  document.getElementById('ssfw-v').textContent=(100-v)+'%';
+}
+
+/* ── Layer toggles ── */
+function togglePWN(layer){
+  pwnVis[layer]=!pwnVis[layer];
+  const tog=document.getElementById('tog-'+layer);
+  if(tog) tog.classList.toggle('on',pwnVis[layer]);
+  if(!segLayer) return;
+  segLayer.eachLayer(l=>{ if(l._pwn===layer) l.setStyle({opacity:pwnVis[layer]?1:0,interactive:pwnVis[layer]}); });
+}
+function toggleAtt(i){
+  attVis[i]=!attVis[i];
+  const tog=document.getElementById('tog-att-'+i);
+  if(tog) tog.classList.toggle('on',attVis[i]);
+  if(attLayers[i]){ attVis[i]?map.addLayer(attLayers[i]):map.removeLayer(attLayers[i]); }
+  if(segments.length>0) reGrade();
+}
+function toggleBase(){
+  baseVis=!baseVis;
+  const tog=document.getElementById('tog-base');
+  if(tog) tog.classList.toggle('on',baseVis);
+  if(netLayer){ baseVis?map.addLayer(netLayer):map.removeLayer(netLayer); }
+}
+
+/* ── Re-grade on attractor toggle ── */
+function reGrade(){
+  if(!segments.length||!lastGraph) return;
+  const ssW=parseInt(document.getElementById('ssfw').value)/100;
+  const proxW=1-ssW;
+  const p1t=parseInt(document.getElementById('p1t').value)/100;
+  const p2t=parseInt(document.getElementById('p2t').value)/100;
+  const p3t=parseInt(document.getElementById('p3t').value)/100;
+  const wKeys=['conn','li8','gi','ch','gch'];
+  const wRaw=wKeys.map(k=>parseInt(document.getElementById('w-'+k).value));
+  const wTot=wRaw.reduce((s,v)=>s+v,0)||100;
+  const wN=wRaw.map(v=>v/wTot);
+  const attConfigs=atts.map((a,i)=>({...a,vis:attVis[i]!==false}));
+  computeProximity(segments,lastGraph,attConfigs);
+  grade(segments,ssW,proxW,p1t,p2t,p3t,wN);
+  renderSegs(segments);
+  if(connectorsOn) buildConnectors(segments,lastGraph);
+  updateStats(segments);
+  showToast('PWN re-graded');
+}
+
+/* ── Connectors toggle ── */
+function toggleConnectors(){
+  connectorsOn=!connectorsOn;
+  document.getElementById('conn-btn').classList.toggle('active',connectorsOn);
+  if(connectorsOn) buildConnectors(segments,lastGraph);
+  else{
+    if(connLayer){map.removeLayer(connLayer);connLayer=null;}
+    const legConn=document.getElementById('leg-conn');
+    if(legConn) legConn.style.display='none';
+  }
+}
+let lastGraph=null;
+
+/* ════════════════════════════════════════════════
    MAIN ANALYSIS
 ════════════════════════════════════════════════ */
 async function runAnalysis(){
