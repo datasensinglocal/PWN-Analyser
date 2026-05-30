@@ -394,9 +394,19 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
     <div class="prog-box">
       <div class="prog-title">Running Analysis</div>
       <div class="prog-phases" id="prog-phases">
+        <div class="prog-phase-row" id="ph-clip">
+          <div class="prog-phase-dot pending" id="ph-clip-dot"></div>
+          <span class="prog-phase-name pending" id="ph-clip-name">Clipping to study area</span>
+          <span class="prog-phase-count" id="ph-clip-count"></span>
+        </div>
+        <div class="prog-phase-row" id="ph-clean">
+          <div class="prog-phase-dot pending" id="ph-clean-dot"></div>
+          <span class="prog-phase-name pending" id="ph-clean-name">Cleaning network</span>
+          <span class="prog-phase-count" id="ph-clean-count"></span>
+        </div>
         <div class="prog-phase-row" id="ph-seg">
           <div class="prog-phase-dot pending" id="ph-seg-dot"></div>
-          <span class="prog-phase-name pending" id="ph-seg-name">Cleaning + Segmenting roads</span>
+          <span class="prog-phase-name pending" id="ph-seg-name">Segmenting at junctions</span>
           <span class="prog-phase-count" id="ph-seg-count"></span>
         </div>
         <div class="prog-phase-row" id="ph-conn">
@@ -1017,8 +1027,14 @@ function cleanNetwork(net) {
   });
 
   const result = turf.featureCollection(finalLines.map(c => turf.lineString(c)));
-  console.log('Network cleaned: '+net.features.length+' → '+finalLines.length+' features ('+
-    Math.round((1-finalLines.length/net.features.length)*100)+'% reduction)');
+  const reduction = Math.round((1-finalLines.length/Math.max(1,net.features.length))*100);
+  const cleanStats = {
+    before: net.features.length,
+    after:  finalLines.length,
+    reduction
+  };
+  console.log('Network cleaned: '+cleanStats.before+' → '+cleanStats.after+' features ('+reduction+'% reduction)');
+  result._cleanStats = cleanStats;
   return result;
 }
 
@@ -1174,6 +1190,8 @@ function segRoads(net) {
   });
 
   console.log('Segmentation: '+rawSegs.length+' raw → '+chains.length+' chains → '+segs.length+' final segs');
+  segs._segStats = { raw: rawSegs.length, chains: chains.length, final: segs.length };
+  segs._cleanStats = cleanNet._cleanStats || null;
   return segs;
 }
 
@@ -1817,7 +1835,7 @@ function showToast(msg){
 }
 
 /* ── Rich progress tracker ── */
-const PHASES=['seg','conn','nain800','nach1200','r2500','prox','grade','reveal'];
+const PHASES=['clip','clean','seg','conn','nain800','nach1200','r2500','prox','grade','reveal'];
 let _currentPhase=null, _analysisStart=null;
 
 function setPhase(phaseId,count){
@@ -1940,31 +1958,52 @@ async function runAnalysis(){
 
   let studyNet=JSON.parse(JSON.stringify(city.network));
   let ctxNet=studyNet;
-  if(bounds.study){setP(7,'Clipping to study area...');await sleep(20);studyNet=clipNet(studyNet,bounds.study);}
-  if(bounds.ctx){setP(11,'Clipping to global context...');await sleep(20);ctxNet=clipNet(JSON.parse(JSON.stringify(city.network)),bounds.ctx);}
 
-  setP(12,'Cleaning network — removing duplicates & slivers...','seg');await sleep(30);
-  // cleanNetwork is called inside segRoads automatically
-  setP(15,'Segmenting at junctions + collinear merge...','seg');await sleep(30);
-  const sSegs=segRoads(studyNet);
+  // ── Clip ──
+  setP(7,'Clipping to study area...','clip');await sleep(20);
+  if(bounds.study){ studyNet=clipNet(studyNet,bounds.study); }
+  if(bounds.ctx)  { ctxNet=clipNet(JSON.parse(JSON.stringify(city.network)),bounds.ctx); }
+  const clippedCount = studyNet.features ? studyNet.features.length : 0;
+  setPhase('clip'); setPhaseCount('clip', clippedCount+' features clipped');
+  await sleep(100);
+
+  // ── Clean ──
+  setP(10,'Cleaning network — Pass 1: removing duplicates & slivers...','clean');await sleep(30);
+  // Note: cleanNetwork runs inside segRoads, we do a preview here for the UI
+  // Pre-run clean to show stats before segmentation
+  const preClean = cleanNetwork(studyNet);
+  const cs = preClean._cleanStats || {};
+  setPhaseCount('clean',
+    (cs.before||'?')+' → '+(cs.after||'?')+' features · '+(cs.reduction||0)+'% removed');
+  setP(13,'Network cleaned — Pass 2: consolidating nodes within 10m...','clean');await sleep(200);
+  setP(15,'Network cleaned — Pass 3: final deduplication...','clean');await sleep(100);
+
+  // ── Segment ──
+  setP(17,'Segmenting at junctions + collinear merge...','seg');await sleep(30);
+  // segRoads calls cleanNetwork again internally (fast, already processed)
+  const sSegs=segRoads(preClean); // pass pre-cleaned network directly
   if(!sSegs.length){document.getElementById('prog-overlay').style.display='none';showToast('No segments found — check file or boundary');return;}
 
-  // Safety cap — warn if too large for browser SS computation
-  const MAX_SEGS = 6000;
+  const ss = sSegs._segStats || {};
   const studyAreaKm2 = bounds.study ? estimateAreaKm2(bounds.study.map(c=>[c[1],c[0]])) : null;
   const areaMsg = studyAreaKm2 ? ' ('+studyAreaKm2.toFixed(1)+' km²)' : '';
-  setP(18,'Segmented: '+sSegs.length+' segments'+areaMsg,'seg',sSegs.length+' segs'+areaMsg);
-  await sleep(600); // pause so user can see the count
+  setPhaseCount('seg',
+    (ss.raw||'?')+' raw → '+(ss.chains||'?')+' chains → '+sSegs.length+' segments'+areaMsg);
+  setP(20,'Segmentation complete: '+sSegs.length+' junction segments'+areaMsg,'seg');
+  await sleep(800); // pause — let user read the cleaning stats
+
+  const MAX_SEGS = 6000;
   if(sSegs.length > MAX_SEGS){
     document.getElementById('prog-overlay').style.display='none';
-    showToast('⚠ '+sSegs.length+' segments'+areaMsg+' — draw a smaller study area (target: under 5 km²)');
-    alert('Study area produces '+sSegs.length+' segments'+areaMsg+'.\n\nAfter cleaning and merging, this is still too large for browser Space Syntax.\n\nTarget: under 2000 segments.\n\nTip: draw a tighter Study Area — try a single neighbourhood (0.5–1.5 km²).');
+    showToast('⚠ '+sSegs.length+' segments'+areaMsg+' — draw a smaller study area');
+    alert('Study area produces '+sSegs.length+' segments'+areaMsg+
+      '.\n\nAfter cleaning and merging, this is still too large.\n\nTarget: under 2000 segments.\n\nTip: draw a tighter Study Area — try a single neighbourhood (0.5–1.5 km²).');
     return;
   }
-  showToast('✓ '+sSegs.length+' segments'+areaMsg+' — running analysis');
+  showToast('✓ '+sSegs.length+' segments'+areaMsg+' — starting Space Syntax');
 
   setP(22,'Segmenting context roads...');await sleep(20);
-  const cSegs=bounds.ctx?segRoads(ctxNet):sSegs;
+  const cSegs=bounds.ctx?segRoads(ctxNet):sSegs; // ctxNet cleaned inside segRoads
 
   setP(28,'Building angular dual graph...');await sleep(20);
   const sGraph=buildGraph(sSegs);
