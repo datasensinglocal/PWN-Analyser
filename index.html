@@ -1596,21 +1596,32 @@ function buildChoiceSet(n){
 }
 
 // Run one SS pass split across multiple parallel workers
-function runSSInWorker(graph, n, metRadius, label, pctFrom, pctTo){
+function runSSInWorker(graph, n, metRadius, label, pctFrom, pctTo, originIndices){
   return new Promise((resolve, reject) => {
-    const nW = workerCount();
-    const { choiceSet, sampleInfo } = buildChoiceSet(n);
+    // Origins to compute from. Defaults to all n if not given.
+    const origins = originIndices && originIndices.length ? originIndices : Array.from({length:n},(_,i)=>i);
+    const nOrigins = origins.length;
+    const nW = Math.min(workerCount(), Math.max(1, nOrigins)); // don't spawn more workers than origins
+    const { choiceSet, sampleInfo } = buildChoiceSet(nOrigins);
     const phId = label.includes('15min')?'nain800':'r2500';
 
-    // Partition origins 0..n-1 round-robin across workers (even load)
+    // Partition the ORIGIN list round-robin across workers (even load)
     const originLists = Array.from({length:nW}, ()=>[]);
-    for(let i=0;i<n;i++) originLists[i % nW].push(i);
+    origins.forEach((origIdx, k)=>{ originLists[k % nW].push(origIdx); });
 
     // Accumulators
     const totDepth = new Float64Array(n);
     const nodeCnt  = new Float64Array(n);
     const choice   = new Float64Array(n);
 
+    // Rebuild choiceSet keyed by SEGMENT index (worker checks choiceSet[src])
+    // Sample among origins for betweenness if there are many.
+    let segChoiceSet = null;
+    if(nOrigins > 800){
+      segChoiceSet = new Uint8Array(n);
+      const stride = Math.max(1, Math.round(nOrigins/500));
+      origins.forEach((segIdx,k)=>{ if(k%stride===0) segChoiceSet[segIdx]=1; });
+    }
     let done=0, failed=false;
     const progressPerWorker = new Array(nW).fill(0);
     const workers=[];
@@ -1618,7 +1629,7 @@ function runSSInWorker(graph, n, metRadius, label, pctFrom, pctTo){
 
     const timeout=setInterval(()=>{
       const silent=(Date.now()-lastProgress)/1000;
-      if(silent>90){
+      if(silent>45){
         clearInterval(timeout);
         workers.forEach(w=>w.terminate());
         document.getElementById('prog-step').textContent=label+' timed out — try a smaller area';
@@ -1659,9 +1670,9 @@ function runSSInWorker(graph, n, metRadius, label, pctFrom, pctTo){
         if(type==='progress'){
           progressPerWorker[workerId]=src;
           const totalDone=progressPerWorker.reduce((s,v)=>s+v,0);
-          const pct=pctFrom+(pctTo-pctFrom)*(totalDone/n);
+          const pct=pctFrom+(pctTo-pctFrom)*(totalDone/nOrigins);
           const remStr=e.data.remaining>0?'  (~'+e.data.remaining+'s)':'';
-          setP(pct, label+' — '+totalDone+'/'+n+' origins · '+nW+' cores'+remStr, phId, totalDone+'/'+n);
+          setP(pct, label+' — '+totalDone+'/'+nOrigins+' origins · '+nW+' cores'+remStr, phId, totalDone+'/'+nOrigins);
         } else if(type==='done'){
           for(let i=0;i<n;i++){
             totDepth[i]+=result.totDepth[i];
@@ -1671,12 +1682,12 @@ function runSSInWorker(graph, n, metRadius, label, pctFrom, pctTo){
           done++;
           if(done===nW && !failed){
             cleanup();
-            if(choiceSet){
-              let sampled=0; for(let i=0;i<n;i++) sampled+=choiceSet[i];
-              const scale = n / Math.max(1,sampled);
+            if(segChoiceSet){
+              let sampled=0; for(let i=0;i<n;i++) sampled+=segChoiceSet[i];
+              const scale = nOrigins / Math.max(1,sampled);
               for(let i=0;i<n;i++) choice[i]*=scale;
             }
-            console.log(label+' done — '+nW+' workers, choice: '+sampleInfo);
+            console.log(label+' done — '+nW+' workers, '+nOrigins+' origins');
             resolve({
               totDepth:Array.from(totDepth),
               nodeCnt: Array.from(nodeCnt),
@@ -1696,7 +1707,7 @@ function runSSInWorker(graph, n, metRadius, label, pctFrom, pctTo){
       // Copy CSR arrays per worker (cloned via structured clone — fast for typed arrays)
       worker.postMessage({
         head, eTo, eAng, eMet, n, metRadius,
-        originList:originLists[w], choiceSet, workerId:w
+        originList:originLists[w], choiceSet:segChoiceSet, workerId:w
       });
     }
   });
@@ -1714,9 +1725,17 @@ async function computeSS(sSegs, cSegs, sGraph, cGraph, pctStart, pctEnd) {
   function serGraph(graph){ return graph.map(edges => edges.map(({to,ang,met})=>({to,ang,met}))); }
   const sG = serGraph(sGraph);
 
+  // Origins = CORE segments only. Buffer segments stay in the graph as reachable
+  // destinations (for catchment) but we don't run Dijkstra FROM them — they're
+  // never graded, so computing their trees is wasted work. This is the big win
+  // for small cores drowning in buffer.
+  const coreOrigins = [];
+  sSegs.forEach((s,i)=>{ if(s._inStudy) coreOrigins.push(i); });
+  console.log('SS origins: '+coreOrigins.length+' core (of '+n+' total segments)');
+
   setP(pctStart, '15-min walk (NAIN + NACH R1250)...','nain800');
   const r15 = await runSSInWorker(sG, n, R15,
-    'NAIN+NACH 15min R1250', pctStart, pctEnd);
+    'NAIN+NACH 15min R1250', pctStart, pctEnd, coreOrigins);
   sSegs.forEach((s,i)=>{
     const nc=r15.nodeCnt[i], td=r15.totDepth[i];
     s._li8_raw = nc>0 ? Math.pow(nc,1.2)/(td+2) : 0;            // integration
@@ -2298,7 +2317,11 @@ async function runAnalysis(){
 
   // Connectivity (on all segments)
   setP(33,'Computing connectivity...','conn');await sleep(10);
-  setPhaseCount('conn',allSegs.filter((_,i)=>sGraph[i]&&sGraph[i].length>0).length+' connected');
+  const connCount=allSegs.filter((_,i)=>sGraph[i]&&sGraph[i].length>0).length;
+  const coreConnCount=coreSegs.filter(s=>sGraph[s._id]&&sGraph[s._id].length>0).length;
+  const isolatedCore=coreSegs.length-coreConnCount;
+  console.log('Connectivity: '+connCount+'/'+allSegs.length+' total connected; core isolated='+isolatedCore);
+  setPhaseCount('conn',coreConnCount+'/'+coreSegs.length+' core connected'+(isolatedCore>0?' ('+isolatedCore+' isolated)':''));
   const maxConn=Math.max(1,...allSegs.map((s,i)=>sGraph[i]?sGraph[i].length:0));
   allSegs.forEach((s,i)=>{s._co=sGraph[i]?sGraph[i].length:0;s._coN=s._co/maxConn;});
 
