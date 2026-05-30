@@ -1794,39 +1794,8 @@ function toggleBase(){
 }
 
 /* ── Re-grade on attractor toggle ── */
-function reGrade(){
-  if(!segments.length||!lastGraph) return;
-  const ssW=parseInt(document.getElementById('ssfw').value)/100;
-  const proxW=1-ssW;
-  const p1t=parseInt(document.getElementById('p1t').value)/100;
-  const p2t=parseInt(document.getElementById('p2t').value)/100;
-  const p3t=parseInt(document.getElementById('p3t').value)/100;
-  const wKeys=['conn','li8','gi','ch','gch'];
-  const wRaw=wKeys.map(k=>parseInt(document.getElementById('w-'+k).value));
-  const wTot=wRaw.reduce((s,v)=>s+v,0)||100;
-  const wN=wRaw.map(v=>v/wTot);
-  const attConfigs=atts.map((a,i)=>({...a,vis:attVis[i]!==false}));
-  computeProximity(segments,lastGraph,attConfigs);
-  grade(segments,ssW,proxW,p1t,p2t,p3t,wN);
-  renderSegs(segments);
-  if(connectorsOn) buildConnectors(segments,lastGraph);
-  updateStats(segments);
-  showToast('PWN re-graded');
-}
 
 /* ── Connectors toggle ── */
-function toggleConnectors(){
-  connectorsOn=!connectorsOn;
-  document.getElementById('conn-btn').classList.toggle('active',connectorsOn);
-  if(connectorsOn) buildConnectors(segments,lastGraph);
-  else{
-    if(connLayer){map.removeLayer(connLayer);connLayer=null;}
-    const legConn=document.getElementById('leg-conn');
-    if(legConn) legConn.style.display='none';
-  }
-}
-let lastGraph=null;
-
 /* ════════════════════════════════════════════════
    MAIN ANALYSIS
 ════════════════════════════════════════════════ */
@@ -1913,32 +1882,6 @@ async function runAnalysis(){
   document.getElementById('conn-btn').disabled=false;
   if(connectorsOn)buildConnectors(sSegs,sGraph);
   showToast('Analysis complete — '+sSegs.length+' segments graded');
-}
-
-/* ── BASE MAP SWITCHER ── */
-function switchBase(name){
-  map.removeLayer(activeBase);
-  activeBase = baseMaps[name];
-  activeBase.addTo(map);
-  // Bring labels pane to front if needed
-  document.querySelectorAll('.base-btn').forEach(b=>b.classList.remove('active'));
-  document.getElementById('base-'+name).classList.add('active');
-  // OSM has its own labels built in — no need for separate label layer
-  // For other tiles labels are embedded too (voyager/positron/dark use full tiles)
-}
-
-/* ── BASEMAP SWITCHER ── */
-function switchBase(name){
-  if(activeBase===name)return;
-  map.removeLayer(baseMaps[activeBase]);
-  baseMaps[name].addTo(map);
-  // Ensure PWN segments stay on top
-  if(segLayer){segLayer.remove();segLayer.addTo(map);}
-  if(connLayer){connLayer.remove();connLayer.addTo(map);}
-  activeBase=name;
-  document.querySelectorAll('.base-btn').forEach(b=>{
-    b.classList.toggle('active',b.id==='base-'+name);
-  });
 }
 
 /* ════════════════════════════════════════════════
