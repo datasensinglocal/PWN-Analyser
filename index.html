@@ -747,8 +747,8 @@ function resetBoundary(type){
   editMarkers[type].forEach(m=>map.removeLayer(m)); editMarkers[type]=[];
   bounds[type]=null;
   document.getElementById(type==='study'?'study-actions':'ctx-actions').style.display='none';
-  // Hide bl if both gone
   if(!bounds.study && !bounds.ctx) document.getElementById('bl').style.display='none';
+  if(type==='study') clearAreaWarning();
   showToast((type==='study'?'Study area':'Global context')+' cleared');
 }
 
@@ -1082,10 +1082,10 @@ function segRoadsSimple(net, segLen) {
    5. Cap at MAX_PROX_LEN for proximity accuracy
 ════════════════════════════════════════════════ */
 
-const JUNCTION_SNAP   = 0.000045; // ~5m — matches clean snap
-const COLLINEAR_THRESH = 20;      // degrees — aggressive merge
-const MIN_SEG_LEN     = 15;       // metres — merge stubs shorter than this
-const MAX_PROX_LEN    = 100;      // subdivide for proximity if longer
+const JUNCTION_SNAP    = 0.000045; // ~5m — matches clean snap
+const COLLINEAR_THRESH = 25;       // degrees — aggressive merge
+const MIN_SEG_LEN      = 20;       // metres — merge stubs shorter than this
+const MAX_PROX_LEN     = 120;      // max length before proximity subdivision
 
 function coordKey(c) {
   return Math.round(c[0]/JUNCTION_SNAP)+','+Math.round(c[1]/JUNCTION_SNAP);
@@ -1186,8 +1186,8 @@ function segRoads(net) {
   });
 
   // ── Step 5: Build segment objects ──
-  // Short stubs get merged into their longer neighbour at this point.
-  // For proximity: subdivide at MAX_PROX_LEN.
+  // Keep full junction-to-junction chains for Space Syntax (topologically correct)
+  // Store multiple midpoints on long segments for accurate proximity snapping
   const segs = [];
   let id = 0;
 
@@ -1198,28 +1198,28 @@ function segRoads(net) {
       const len  = turf.length(line, {units:'meters'});
       if(len < MIN_SEG_LEN) return; // skip micro-stubs
 
-      if(len <= MAX_PROX_LEN){
-        const mid = [(coords[0][0]+coords[coords.length-1][0])/2,
-                     (coords[0][1]+coords[coords.length-1][1])/2];
-        const seg = turf.lineString(coords);
-        initSeg(seg, id++, mid, len);
-        segs.push(seg);
-      } else {
-        // Subdivide for proximity accuracy
-        const n    = Math.max(1, Math.ceil(len / MAX_PROX_LEN));
+      const seg = turf.lineString(coords);
+      // Single midpoint for short segments
+      const mid = [(coords[0][0]+coords[coords.length-1][0])/2,
+                   (coords[0][1]+coords[coords.length-1][1])/2];
+      initSeg(seg, id++, mid, len);
+
+      // For long segments, store extra proximity sample points
+      // so POI snapping finds the nearest part of the segment
+      if(len > MAX_PROX_LEN) {
+        const n = Math.ceil(len / MAX_PROX_LEN);
         const step = len / n;
-        for(let j=0; j<n; j++){
-          const s = turf.along(line, j*step,               {units:'meters'});
-          const e = turf.along(line, Math.min((j+1)*step,len), {units:'meters'});
-          if(!s||!e) continue;
-          const sc=s.geometry.coordinates, ec=e.geometry.coordinates;
-          const sub=turf.lineString([sc,ec]);
-          const sl=turf.length(sub,{units:'meters'});
-          if(sl < MIN_SEG_LEN) continue;
-          initSeg(sub, id++, [(sc[0]+ec[0])/2,(sc[1]+ec[1])/2], sl);
-          segs.push(sub);
+        const extras = [];
+        for(let j=1; j<n; j++) {
+          try {
+            const pt = turf.along(line, j*step, {units:'meters'});
+            if(pt) extras.push(pt.geometry.coordinates);
+          } catch(e){}
         }
+        if(extras.length) seg._proxPts = [mid, ...extras];
       }
+
+      segs.push(seg);
     } catch(ex) {}
   });
 
@@ -1252,22 +1252,92 @@ function estimateAreaKm2(boundaryCoords){
 }
 
 // ── Segment count preview ──
+// Area limits
+const MAX_AREA_KM2  = 4.0;   // hard cap — analysis will be too slow
+const WARN_AREA_KM2 = 2.0;   // soft warning — may be slow
+
 function previewSegmentCount(){
   const city = activeCity!==null ? cities[activeCity] : null;
-  if(!city?.network || !bounds.study) return;
+  if(!bounds.study) return;
+
   try{
-    // Quick estimate: count clipped features, estimate segs from area
-    const clipped = clipNet(city.network, bounds.study);
-    const area    = estimateAreaKm2(bounds.study.map(c=>[c[1],c[0]]));
-    const features = clipped.features ? clipped.features.length : 0;
-    // Rough estimate: ~0.8 segments per feature after cleaning+merging
-    const estSegs = Math.round(features * 0.8);
-    const areaStr = area ? ' · '+area.toFixed(1)+' km²' : '';
-    const status  = estSegs > 4000 ? '⚠ large — draw smaller area'
-                  : estSegs > 2000 ? '⚡ moderate — may take 2-3 min'
-                  : '✓ good size — ~30-60s';
-    showToast('~'+features+' features → est. ~'+estSegs+' segments'+areaStr+' — '+status);
-  }catch(e){}
+    const area = estimateAreaKm2(bounds.study.map(c=>[c[1],c[0]]));
+    if(!area) return;
+
+    const areaStr = area.toFixed(2)+' km²';
+
+    // Hard cap — show persistent warning banner on map
+    if(area > MAX_AREA_KM2){
+      showAreaWarning('too-large',
+        '⚠ Study area too large: '+areaStr,
+        'Maximum recommended: '+MAX_AREA_KM2+' km²  ·  Draw a smaller boundary');
+      return;
+    }
+
+    // Soft warning
+    if(area > WARN_AREA_KM2){
+      showAreaWarning('warn',
+        '⚡ Large study area: '+areaStr,
+        'Analysis may take 3-5 minutes  ·  Try under '+WARN_AREA_KM2+' km² for best performance');
+      return;
+    }
+
+    // Good — estimate features if network loaded
+    let featStr = '';
+    if(city?.network){
+      const clipped  = clipNet(city.network, bounds.study);
+      const features = clipped.features ? clipped.features.length : 0;
+      const estSegs  = Math.round(features * 0.65);
+      featStr = '  ·  ~'+estSegs+' segments';
+    }
+
+    showAreaWarning('ok',
+      '✓ Study area: '+areaStr+featStr,
+      'Good size — analysis should complete in 30-90 seconds');
+
+  }catch(e){ console.error('Preview error:',e); }
+}
+
+function showAreaWarning(level, title, subtitle){
+  // Remove any existing warning
+  const existing = document.getElementById('area-warning');
+  if(existing) existing.remove();
+
+  const el = document.createElement('div');
+  el.id = 'area-warning';
+  el.style.cssText = `
+    position:absolute;bottom:70px;left:50%;transform:translateX(-50%);
+    z-index:600;padding:8px 16px;border-radius:6px;text-align:center;
+    font-family:monospace;pointer-events:none;transition:opacity .3s;
+    min-width:300px;max-width:460px;
+  `;
+
+  const colors = {
+    'too-large': { bg:'rgba(200,74,74,.9)',   border:'#ff7a7a', text:'#fff' },
+    'warn':      { bg:'rgba(200,143,32,.9)',  border:'#ffcc44', text:'#fff' },
+    'ok':        { bg:'rgba(30,50,30,.9)',    border:'#4a9a4a', text:'#aaffaa' }
+  };
+  const c = colors[level] || colors.ok;
+  el.style.background   = c.bg;
+  el.style.border       = '1px solid '+c.border;
+  el.style.color        = c.text;
+
+  el.innerHTML = `
+    <div style="font-size:12px;font-weight:600;">${title}</div>
+    <div style="font-size:10px;opacity:.85;margin-top:3px;">${subtitle}</div>
+  `;
+
+  document.getElementById('map-panel').appendChild(el);
+
+  // Auto-dismiss ok messages after 4 seconds
+  if(level === 'ok'){
+    setTimeout(()=>{ if(el.parentNode) el.remove(); }, 4000);
+  }
+}
+
+function clearAreaWarning(){
+  const el = document.getElementById('area-warning');
+  if(el) el.remove();
 }
 
 /* ════════════════════════════════════════════════
@@ -1553,12 +1623,16 @@ function computeProximity(segs,graph,attConfigs){
       }catch(ex){return;}
 
       // Step 1: Find nearest segment (snap) within 200m Euclidean
+      // Uses _proxPts for long segments so snapping is accurate anywhere along the segment
       const SNAP_R=0.002; // ~200m in degrees
       let nearestIdx=-1,nearestD=Infinity;
       segs.forEach((s,i)=>{
-        const dx=s._mid[0]-poiPt[0],dy=s._mid[1]-poiPt[1];
-        const d=Math.sqrt(dx*dx+dy*dy);
-        if(d<nearestD&&d<SNAP_R){nearestD=d;nearestIdx=i;}
+        const pts = s._proxPts || [s._mid];
+        for(const sp of pts){
+          const dx=sp[0]-poiPt[0],dy=sp[1]-poiPt[1];
+          const d=Math.sqrt(dx*dx+dy*dy);
+          if(d<nearestD&&d<SNAP_R){nearestD=d;nearestIdx=i;}
+        }
       });
       if(nearestIdx<0)return;
 
@@ -2012,6 +2086,19 @@ async function runAnalysis(){
   const wTot=wRaw.reduce((s,v)=>s+v,0)||100;
   const wN=wRaw.map(v=>v/wTot);
 
+  // Area check before starting
+  if(bounds.study){
+    const area = estimateAreaKm2(bounds.study.map(c=>[c[1],c[0]]));
+    if(area && area > MAX_AREA_KM2){
+      showAreaWarning('too-large',
+        '⚠ Study area too large: '+area.toFixed(2)+' km²',
+        'Reduce to under '+MAX_AREA_KM2+' km² before running analysis');
+      showToast('Study area too large — draw a smaller boundary');
+      return;
+    }
+  }
+
+  clearAreaWarning();
   document.getElementById('prog-overlay').style.display='flex';
   startAnalysisClock();
   setP(3,'Preparing networks...');await sleep(30);
