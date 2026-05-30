@@ -1039,6 +1039,40 @@ function cleanNetwork(net) {
 }
 
 /* ════════════════════════════════════════════════
+   SIMPLE METRIC SEGMENTATION (for context network)
+   Fast 150m interval segmentation — no junction
+   detection needed, just network topology for
+   global integration computation
+════════════════════════════════════════════════ */
+function segRoadsSimple(net, segLen) {
+  const segs = []; let id = 0;
+  const cleanNet = cleanNetwork(net);
+  for(const f of (cleanNet.features||[])){
+    if(!f.geometry || f.geometry.type !== 'LineString') continue;
+    try{
+      const line = f;
+      const len  = turf.length(line, {units:'meters'});
+      if(len < 5) continue;
+      const n    = Math.max(1, Math.round(len/segLen));
+      const step = len/n;
+      for(let j=0;j<n;j++){
+        const s = turf.along(line, j*step,                       {units:'meters'});
+        const e = turf.along(line, Math.min((j+1)*step, len),    {units:'meters'});
+        if(!s||!e) continue;
+        const sc=s.geometry.coordinates, ec=e.geometry.coordinates;
+        const seg=turf.lineString([sc,ec]);
+        const sl=turf.length(seg,{units:'meters'});
+        if(sl<5) continue;
+        initSeg(seg, id++, [(sc[0]+ec[0])/2,(sc[1]+ec[1])/2], sl);
+        segs.push(seg);
+      }
+    }catch(ex){}
+  }
+  console.log('Context segmentation: '+segs.length+' segments at '+segLen+'m intervals');
+  return segs;
+}
+
+/* ════════════════════════════════════════════════
    JUNCTION-BASED SEGMENTATION + COLLINEAR MERGE
    1. Clean network first
    2. Split roads at real intersections only
@@ -1069,8 +1103,8 @@ function bearingDiff(a, b) {
 }
 
 function segRoads(net) {
-  // ── Step 0: Clean ──
-  const cleanNet = cleanNetwork(net);
+  // ── Step 0: Clean (skip if already cleaned) ──
+  const cleanNet = net._cleanStats ? net : cleanNetwork(net);
 
   // ── Step 1: Collect coordinate arrays ──
   const allCoords = [];
@@ -1222,14 +1256,17 @@ function previewSegmentCount(){
   const city = activeCity!==null ? cities[activeCity] : null;
   if(!city?.network || !bounds.study) return;
   try{
+    // Quick estimate: count clipped features, estimate segs from area
     const clipped = clipNet(city.network, bounds.study);
-    const preview = segRoads(clipped);
     const area    = estimateAreaKm2(bounds.study.map(c=>[c[1],c[0]]));
+    const features = clipped.features ? clipped.features.length : 0;
+    // Rough estimate: ~0.8 segments per feature after cleaning+merging
+    const estSegs = Math.round(features * 0.8);
     const areaStr = area ? ' · '+area.toFixed(1)+' km²' : '';
-    const status  = preview.length > 5000 ? '⚠ large, draw smaller area'
-                  : preview.length > 2000 ? '⚡ moderate, may take 2-3 min'
-                  : '✓ good size';
-    showToast('~'+preview.length+' segments'+areaStr+' — '+status);
+    const status  = estSegs > 4000 ? '⚠ large — draw smaller area'
+                  : estSegs > 2000 ? '⚡ moderate — may take 2-3 min'
+                  : '✓ good size — ~30-60s';
+    showToast('~'+features+' features → est. ~'+estSegs+' segments'+areaStr+' — '+status);
   }catch(e){}
 }
 
@@ -1327,7 +1364,7 @@ function runSS(graph, n, metRadius) {
   const totDepth = new Float64Array(n);
   const nodeCnt  = new Float64Array(n);
   const choice   = new Float64Array(n);
-  const REPORT   = 10; // post progress every N origins for smooth bar
+  const REPORT   = 5; // post progress every N origins for smooth bar
 
   for(let src=0; src<n; src++){
     const aD   = new Float32Array(n).fill(Infinity);
@@ -1371,6 +1408,7 @@ function runSS(graph, n, metRadius) {
 
 self.onmessage = function(e){
   const{graph, n, metRadius, runId} = e.data;
+  self.postMessage({type:'progress', src:0, n, remaining:0}); // signal started
   const result = runSS(graph, n, metRadius);
   self.postMessage({type:'done', result, runId});
 };
@@ -1386,7 +1424,23 @@ function makeSSWorker() {
 function runSSInWorker(graph, n, metRadius, label, pctFrom, pctTo) {
   return new Promise((resolve, reject) => {
     const worker = makeSSWorker();
+    let lastProgress = Date.now();
+    // Timeout: if no progress message in 60s, something is wrong
+    const timeout = setInterval(() => {
+      const silent = (Date.now() - lastProgress) / 1000;
+      if(silent > 60) {
+        clearInterval(timeout);
+        worker.terminate();
+        document.getElementById('prog-step').textContent = label + ' timed out after 60s — try smaller area';
+        document.getElementById('prog-overlay').style.display='none';
+        showToast('Analysis timed out — draw a smaller study area');
+        reject(new Error('Worker timeout'));
+      } else if(silent > 5) {
+        document.getElementById('prog-step').textContent = label + ' — computing... (' + Math.round(silent) + 's)';
+      }
+    }, 2000);
     worker.onmessage = function(e) {
+      lastProgress = Date.now();
       const {type, src, result} = e.data;
       if(type === 'progress') {
         const pct = pctFrom + (pctTo - pctFrom) * (src / n);
@@ -1394,12 +1448,18 @@ function runSSInWorker(graph, n, metRadius, label, pctFrom, pctTo) {
         const phId = label.includes('R800')?'nain800':label.includes('R1200')?'nach1200':'r2500';
         setP(pct, label + ' — ' + src + '/' + n + ' origins' + remStr, phId, src+'/'+n);
       } else if(type === 'done') {
+        clearInterval(timeout);
         worker.terminate();
         resolve(e.data.result);
       }
     };
     worker.onerror = function(err) {
+      clearInterval(timeout);
       worker.terminate();
+      console.error('Worker error:', err);
+      document.getElementById('prog-step').textContent = 'Worker error: ' + (err.message||'unknown');
+      document.getElementById('prog-overlay').style.display='none';
+      showToast('Space Syntax worker failed — check console');
       reject(err);
     };
     // Send graph as plain arrays (transferable-friendly)
@@ -2002,8 +2062,9 @@ async function runAnalysis(){
   }
   showToast('✓ '+sSegs.length+' segments'+areaMsg+' — starting Space Syntax');
 
-  setP(22,'Segmenting context roads...');await sleep(20);
-  const cSegs=bounds.ctx?segRoads(ctxNet):sSegs; // ctxNet cleaned inside segRoads
+  setP(22,'Segmenting context at 200m intervals...');await sleep(20);
+  // Context uses simplified 150m segmentation — just needs topology for global scores
+  const cSegs = bounds.ctx ? segRoadsSimple(ctxNet, 200) : sSegs;
 
   setP(28,'Building angular dual graph...');await sleep(20);
   const sGraph=buildGraph(sSegs);
