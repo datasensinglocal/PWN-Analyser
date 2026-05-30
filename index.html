@@ -144,7 +144,7 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
 .leg-row.conn-row{margin-top:5px;padding-top:5px;border-top:1px solid #1c1c1c}
 
 /* boundary legend */
-.bl{position:absolute;bottom:18px;left:14px;background:rgba(13,13,13,.93);border:1px solid #252525;border-radius:6px;padding:8px 11px;z-index:500;display:none}
+.bl{position:absolute;bottom:90px;left:14px;background:rgba(13,13,13,.93);border:1px solid #252525;border-radius:6px;padding:8px 11px;z-index:500;display:none}
 .bl-row{display:flex;align-items:center;gap:7px;font-size:10px;color:#666;margin-bottom:3px}
 .bl-row:last-child{margin-bottom:0}
 .bl-line{width:16px;height:2px;border-radius:1px}
@@ -484,7 +484,8 @@ let segments=[],editMarkers={study:[],ctx:[]};
 /* ════════════════════════════════════════════════
    MAP INIT
 ════════════════════════════════════════════════ */
-const map=L.map('map',{zoomControl:true,preferCanvas:true}).setView([12.97,77.59],13);
+const map=L.map('map',{zoomControl:false,preferCanvas:true}).setView([12.97,77.59],13);
+L.control.zoom({position:'bottomleft'}).addTo(map);
 // Base map selector — OSM default, switchable
 const baseMaps = {
   osm: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
