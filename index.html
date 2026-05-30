@@ -1444,17 +1444,20 @@ function buildGraph(segs){
   });
   const graph=segs.map(()=>[]);
   const seen=segs.map(()=>new Set());
+  const MAX_DEG=10; // cap connections — more than this is a snapping artefact
   segs.forEach((s,i)=>{
     const c=s.geometry.coordinates;
     [c[0],c[c.length-1]].forEach(ep=>{
+      // Prefer tight snap; only fall back to loose snap if no tight neighbour
       let nb=(nmap1[key1(ep)]||[]).filter(j=>j!==i);
       if(!nb.length)nb=(nmap2[key2(ep)]||[]).filter(j=>j!==i);
-      nb.forEach(j=>{
+      for(const j of nb){
+        if(graph[i].length>=MAX_DEG)break; // degree cap
         if(!seen[i].has(j)){
           seen[i].add(j);
           graph[i].push({to:j,ang:angCost(bearings[i],bearings[j]),met:segs[j]._len||10});
         }
-      });
+      }
     });
   });
   return graph;
@@ -2386,6 +2389,11 @@ async function runAnalysis(){
   setP(28,'Building angular dual graph...');await sleep(20);
   const sGraph=buildGraph(allSegs);
   lastGraph=sGraph;
+  // Diagnostic: graph connectivity health
+  let totDeg=0,maxDeg=0,overConn=0;
+  sGraph.forEach(e=>{ totDeg+=e.length; if(e.length>maxDeg)maxDeg=e.length; if(e.length>8)overConn++; });
+  console.log('Graph: '+allSegs.length+' nodes, avg degree '+(totDeg/allSegs.length).toFixed(1)+
+    ', max degree '+maxDeg+', over-connected(>8) '+overConn);
 
   // Connectivity (on all segments)
   setP(33,'Computing connectivity...','conn');await sleep(10);
