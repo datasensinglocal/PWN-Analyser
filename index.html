@@ -330,7 +330,7 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
     <!-- Study area controls -->
     <div class="boundary-group" id="study-group">
       <button class="map-btn study" id="study-btn" onclick="startDraw('study')">Draw Study Area</button>
-      <button class="map-btn" id="suggest-btn" onclick="toggleSuggestModule()" title="Show a 2 km² suggested module at the map centre" style="font-size:9px">Suggest 15-min Module</button>
+      <button class="map-btn" id="suggest-btn" onclick="toggleSuggestModule()" title="Show a 2 km² suggested module at the map centre" style="font-size:9px">Drop 2 km² Module</button>
       <div class="boundary-actions" id="study-actions" style="display:none">
         <button class="map-btn bnd-act" onclick="resetBoundary('study')" title="Reset study area">↺ Reset</button>
         <button class="map-btn bnd-act" onclick="saveBoundary('study')" title="Save this boundary">Save</button>
@@ -524,81 +524,27 @@ function switchBaseMap(name) {
    Debounced: settles after panning stops.
 ════════════════════════════════════════════════ */
 const SUGGEST_AREA_KM2 = 2.0;          // target module size
-let suggestOn = false;
-let suggestLayer = null;
-let suggestBtnEl = null;
-let suggestDebounce = null;
+// (suggest module drops an editable boundary directly — no ghost state needed)
 
+// Drop a 2 km² editable study boundary centred on the current map view.
+// It's a real boundary immediately — draggable nodes, live area readout —
+// not a passive ghost. The user reshapes it directly.
 function toggleSuggestModule(){
-  suggestOn = !suggestOn;
-  if(!suggestBtnEl) suggestBtnEl = document.getElementById('suggest-btn');
-  suggestBtnEl.style.background = suggestOn ? '#c8a96e' : '';
-  suggestBtnEl.style.color      = suggestOn ? '#0d0d0d' : '';
-  if(suggestOn){ drawSuggestBox(); }
-  else { clearSuggestBox(); }
-}
-
-function clearSuggestBox(){
-  if(suggestLayer){ map.removeLayer(suggestLayer); suggestLayer=null; }
-  const btn=document.getElementById('use-suggest-btn');
-  if(btn) btn.remove();
-}
-
-function drawSuggestBox(){
-  clearSuggestBox();
-  if(!suggestOn) return;
   const c = map.getCenter();
-  // Side length for the target area, in metres
-  const sideM = Math.sqrt(SUGGEST_AREA_KM2 * 1e6); // e.g. 2 km² → ~1414 m
+  const sideM = Math.sqrt(SUGGEST_AREA_KM2 * 1e6); // 2 km² → ~1414 m
   const half = sideM/2;
-  // Convert metres to degrees at this latitude
   const latDeg = half / 111320;
   const lngDeg = half / (111320 * Math.cos(c.lat*Math.PI/180));
-  const corners = [
-    [c.lat - latDeg, c.lng - lngDeg],
-    [c.lat - latDeg, c.lng + lngDeg],
-    [c.lat + latDeg, c.lng + lngDeg],
-    [c.lat + latDeg, c.lng - lngDeg]
+  // [lon,lat] corners, clockwise
+  const coordsLonLat = [
+    [c.lng - lngDeg, c.lat - latDeg],
+    [c.lng + lngDeg, c.lat - latDeg],
+    [c.lng + lngDeg, c.lat + latDeg],
+    [c.lng - lngDeg, c.lat + latDeg]
   ];
-  suggestLayer = L.polygon(corners, {
-    color:'#c8a96e', weight:2, dashArray:'8,5',
-    fillColor:'#c8a96e', fillOpacity:0.06, interactive:false
-  }).addTo(map);
-
-  // Floating "Use this module" button near the box
-  let btn=document.getElementById('use-suggest-btn');
-  if(!btn){
-    btn=document.createElement('button');
-    btn.id='use-suggest-btn';
-    btn.textContent='✓ Use this 2 km² module';
-    btn.style.cssText=`position:absolute;z-index:600;left:50%;top:60px;transform:translateX(-50%);
-      background:#c8a96e;color:#0d0d0d;border:none;border-radius:5px;padding:8px 16px;
-      font-family:inherit;font-size:11px;font-weight:700;letter-spacing:.05em;cursor:pointer;
-      box-shadow:0 2px 12px rgba(0,0,0,.4)`;
-    btn.onclick=adoptSuggestBox;
-    document.getElementById('map-panel').appendChild(btn);
-  }
-}
-
-function adoptSuggestBox(){
-  if(!suggestLayer) return;
-  // Convert the box corners to [lon,lat] and apply as study boundary
-  const latlngs = suggestLayer.getLatLngs()[0];
-  const coordsLonLat = latlngs.map(ll=>[ll.lng, ll.lat]);
-  // Turn off suggestion mode
-  suggestOn=false;
-  if(suggestBtnEl){ suggestBtnEl.style.background=''; suggestBtnEl.style.color=''; }
-  clearSuggestBox();
   applyBoundary('study', coordsLonLat);
-  showToast('Suggested 2 km² module adopted — drag nodes to adjust');
+  showToast('2 km² module placed — drag the white nodes to reshape it');
 }
-
-// Redraw the suggestion (debounced) whenever the view settles
-map.on('moveend zoomend', ()=>{
-  if(!suggestOn) return;
-  clearTimeout(suggestDebounce);
-  suggestDebounce = setTimeout(drawSuggestBox, 250);
-});
 
 /* ════════════════════════════════════════════════
    KML PARSER
@@ -1160,6 +1106,11 @@ function cleanNetwork(net) {
    global integration computation
 ════════════════════════════════════════════════ */
 function segRoadsSimple(net, segLen) {
+  // Buffer/context segmentation — deliberately coarse. The buffer only provides
+  // catchment TOPOLOGY for core-edge roads, so we keep each cleaned road as a
+  // single segment and only split very long roads (so the graph keeps nodes at
+  // junctions). This keeps buffer segment counts low.
+  const SPLIT_LONG = Math.max(segLen, 400); // only subdivide roads longer than this
   const segs = []; let id = 0;
   const cleanNet = cleanNetwork(net);
   for(const f of (cleanNet.features||[])){
@@ -1167,23 +1118,31 @@ function segRoadsSimple(net, segLen) {
     try{
       const line = f;
       const len  = turf.length(line, {units:'meters'});
-      if(len < 5) continue;
-      const n    = Math.max(1, Math.round(len/segLen));
-      const step = len/n;
-      for(let j=0;j<n;j++){
-        const s = turf.along(line, j*step,                       {units:'meters'});
-        const e = turf.along(line, Math.min((j+1)*step, len),    {units:'meters'});
-        if(!s||!e) continue;
-        const sc=s.geometry.coordinates, ec=e.geometry.coordinates;
+      if(len < 10) continue; // skip very short buffer stubs entirely
+      if(len <= SPLIT_LONG){
+        // Keep whole road as one segment (endpoints preserved for connectivity)
+        const c = line.geometry.coordinates;
+        const sc=c[0], ec=c[c.length-1];
         const seg=turf.lineString([sc,ec]);
-        const sl=turf.length(seg,{units:'meters'});
-        if(sl<5) continue;
-        initSeg(seg, id++, [(sc[0]+ec[0])/2,(sc[1]+ec[1])/2], sl);
+        initSeg(seg, id++, [(sc[0]+ec[0])/2,(sc[1]+ec[1])/2], len);
         segs.push(seg);
+      } else {
+        const n=Math.ceil(len/SPLIT_LONG), step=len/n;
+        for(let j=0;j<n;j++){
+          const s=turf.along(line,j*step,{units:'meters'});
+          const e=turf.along(line,Math.min((j+1)*step,len),{units:'meters'});
+          if(!s||!e) continue;
+          const sc=s.geometry.coordinates, ec=e.geometry.coordinates;
+          const seg=turf.lineString([sc,ec]);
+          const sl=turf.length(seg,{units:'meters'});
+          if(sl<10) continue;
+          initSeg(seg, id++, [(sc[0]+ec[0])/2,(sc[1]+ec[1])/2], sl);
+          segs.push(seg);
+        }
       }
     }catch(ex){}
   }
-  console.log('Context segmentation: '+segs.length+' segments at '+segLen+'m intervals');
+  console.log('Buffer segmentation: '+segs.length+' coarse segments (split>'+SPLIT_LONG+'m)');
   return segs;
 }
 
@@ -2298,9 +2257,9 @@ async function runAnalysis(){
   // any segment whose midpoint is inside the core (avoid double-coverage).
   let bufferSegs = [];
   if(bufBoundary && bufBoundary!==coreBoundary){
-    setP(20,'Segmenting buffer ring (coarse 200m)...','seg');await sleep(20);
+    setP(20,'Segmenting buffer ring (coarse, roads only)...','seg');await sleep(20);
     let bufNet = clipNet(JSON.parse(JSON.stringify(city.network)), bufBoundary);
-    const bufSimple = segRoadsSimple(bufNet, 200);
+    const bufSimple = segRoadsSimple(bufNet, 400);
     // Build core polygon for inside-test
     let corePoly=null;
     try{ const ring=[...coreBoundary,coreBoundary[0]]; corePoly=turf.polygon([ring]); }catch(e){}
