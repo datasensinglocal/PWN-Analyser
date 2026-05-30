@@ -122,7 +122,7 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
 /* ── MAP ── */
 #map-panel{flex:1;position:relative}
 #map{width:100%;height:100%}
-.map-controls{position:absolute;top:14px;left:14px;z-index:500;display:flex;flex-direction:column;gap:6px}
+.map-controls{position:absolute;top:14px;right:14px;z-index:500;display:flex;flex-direction:column;gap:6px;align-items:flex-end}
 .map-btn{background:rgba(13,13,13,.92);border:1px solid #2a2a2a;border-radius:4px;padding:7px 13px;font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;cursor:pointer;color:#666;font-family:inherit;transition:all .15s}
 .map-btn:hover{border-color:#c8a96e;color:#c8a96e}
 .base-switcher{display:flex;gap:3px;background:rgba(13,13,13,.92);border:1px solid #2a2a2a;border-radius:4px;padding:3px}
@@ -150,7 +150,7 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
 .bl-line{width:16px;height:2px;border-radius:1px}
 
 /* info panel */
-.info-panel{position:absolute;top:14px;right:14px;background:rgba(13,13,13,.96);border:1px solid #252525;border-radius:6px;padding:12px 14px;z-index:500;width:220px;display:none}
+.info-panel{position:absolute;top:14px;left:14px;background:rgba(13,13,13,.96);border:1px solid #252525;border-radius:6px;padding:12px 14px;z-index:500;width:220px;display:none}
 .info-close{position:absolute;top:7px;right:9px;color:#383838;cursor:pointer;font-size:15px}
 .info-close:hover{color:#888}
 .info-seg-id{font-size:9px;color:#484848;margin-bottom:4px;font-family:monospace}
@@ -273,11 +273,9 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
       <div class="section">
         <div class="sec-label">Space Syntax Sub-score Weights</div>
         <div class="ss-block">
-          <div class="ss-wr"><span class="ss-lbl">Connectivity</span><input type="range" id="w-conn" min="0" max="100" value="10" step="1" oninput="syncSSW()"/><span class="ss-val" id="wv-conn">10%</span></div>
-          <div class="ss-wr"><span class="ss-lbl">Local Int. 800m</span><input type="range" id="w-li8" min="0" max="100" value="30" step="1" oninput="syncSSW()"/><span class="ss-val" id="wv-li8">30%</span></div>
-          <div class="ss-wr"><span class="ss-lbl">City-scale Int. R2500</span><input type="range" id="w-gi" min="0" max="100" value="20" step="1" oninput="syncSSW()"/><span class="ss-val" id="wv-gi">20%</span></div>
-          <div class="ss-wr"><span class="ss-lbl">Local Choice 1200m</span><input type="range" id="w-ch" min="0" max="100" value="25" step="1" oninput="syncSSW()"/><span class="ss-val" id="wv-ch">25%</span></div>
-          <div class="ss-wr"><span class="ss-lbl">City-scale Choice R2500</span><input type="range" id="w-gch" min="0" max="100" value="15" step="1" oninput="syncSSW()"/><span class="ss-val" id="wv-gch">15%</span></div>
+          <div class="ss-wr"><span class="ss-lbl">Connectivity</span><input type="range" id="w-conn" min="0" max="100" value="20" step="1" oninput="syncSSW()"/><span class="ss-val" id="wv-conn">10%</span></div>
+          <div class="ss-wr"><span class="ss-lbl">15-min Integration</span><input type="range" id="w-li8" min="0" max="100" value="45" step="1" oninput="syncSSW()"/><span class="ss-val" id="wv-li8">30%</span></div>
+          <div class="ss-wr"><span class="ss-lbl">15-min Choice</span><input type="range" id="w-ch" min="0" max="100" value="35" step="1" oninput="syncSSW()"/><span class="ss-val" id="wv-ch">25%</span></div>
           <div class="ss-total" id="ss-total">Total: 100%</div>
         </div>
       </div>
@@ -332,6 +330,7 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
     <!-- Study area controls -->
     <div class="boundary-group" id="study-group">
       <button class="map-btn study" id="study-btn" onclick="startDraw('study')">Draw Study Area</button>
+      <button class="map-btn" id="suggest-btn" onclick="toggleSuggestModule()" title="Show a 2 km² suggested module at the map centre" style="font-size:9px">Suggest 15-min Module</button>
       <div class="boundary-actions" id="study-actions" style="display:none">
         <button class="map-btn bnd-act" onclick="resetBoundary('study')" title="Reset study area">↺ Reset</button>
         <button class="map-btn bnd-act" onclick="saveBoundary('study')" title="Save this boundary">Save</button>
@@ -342,7 +341,7 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
       <button class="map-btn ctx" id="ctx-btn" onclick="startDraw('ctx')">Draw Global Context</button>
       <div class="boundary-actions" id="ctx-actions" style="display:none">
         <button class="map-btn bnd-act" onclick="resetBoundary('ctx')" title="Reset context">↺ Reset</button>
-        <button class="map-btn bnd-act" onclick="autoGenerateContext()" title="Auto 800m buffer">Auto 800m</button>
+        <button class="map-btn bnd-act" onclick="autoGenerateContext()" title="Auto 1.25km buffer (15-min walk)">Auto 1.25km</button>
         <button class="map-btn bnd-act" onclick="saveBoundary('ctx')" title="Save this boundary">Save</button>
       </div>
     </div>
@@ -371,7 +370,7 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
   </div>
   <div class="bl" id="bl">
     <div class="bl-row"><div class="bl-line" style="background:#D0021B"></div>Study Area</div>
-    <div class="bl-row"><div class="bl-line" style="background:#1565C0"></div>Global Context (auto 800m buffer)</div>
+    <div class="bl-row"><div class="bl-line" style="background:#1565C0"></div>Analysis Buffer (auto 1.25km)</div>
   </div>
   <div class="info-panel" id="info-panel">
     <span class="info-close" onclick="document.getElementById('info-panel').style.display='none'">×</span>
@@ -382,10 +381,8 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
     <hr class="idiv">
     <div class="ir"><span class="il">SS score</span><span class="iv" id="iv-ss">—</span></div>
     <div class="ir"><span class="il" style="padding-left:8px">↳ Connectivity</span><span class="iv" id="iv-co">—</span></div>
-    <div class="ir"><span class="il" style="padding-left:8px">↳ NAIN R800</span><span class="iv" id="iv-l8">—</span></div>
-    <div class="ir"><span class="il" style="padding-left:8px">↳ NAIN R2500</span><span class="iv" id="iv-gi">—</span></div>
-    <div class="ir"><span class="il" style="padding-left:8px">↳ NACH R1200</span><span class="iv" id="iv-ch">—</span></div>
-    <div class="ir"><span class="il" style="padding-left:8px">↳ NACH R2500</span><span class="iv" id="iv-gch">—</span></div>
+    <div class="ir"><span class="il" style="padding-left:8px">↳ Integration (15-min)</span><span class="iv" id="iv-l8">—</span></div>
+    <div class="ir"><span class="il" style="padding-left:8px">↳ Choice (15-min)</span><span class="iv" id="iv-ch">—</span></div>
     <hr class="idiv">
     <div class="ir"><span class="il">Proximity score</span><span class="iv" id="iv-px">—</span></div>
     <div id="iv-px-det"></div>
@@ -416,17 +413,17 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
         </div>
         <div class="prog-phase-row" id="ph-nain800">
           <div class="prog-phase-dot pending" id="ph-nain800-dot"></div>
-          <span class="prog-phase-name pending" id="ph-nain800-name">NAIN R800 — Local Integration</span>
+          <span class="prog-phase-name pending" id="ph-nain800-name">15-min walk — Integration + Choice</span>
           <span class="prog-phase-count" id="ph-nain800-count"></span>
         </div>
         <div class="prog-phase-row" id="ph-nach1200">
           <div class="prog-phase-dot pending" id="ph-nach1200-dot"></div>
-          <span class="prog-phase-name pending" id="ph-nach1200-name">NACH R1200 — Local Choice</span>
+          <span class="prog-phase-name pending" id="ph-nach1200-name" style="opacity:.4">↳ Choice folded into 15-min pass</span>
           <span class="prog-phase-count" id="ph-nach1200-count"></span>
         </div>
         <div class="prog-phase-row" id="ph-r2500">
           <div class="prog-phase-dot pending" id="ph-r2500-dot"></div>
-          <span class="prog-phase-name pending" id="ph-r2500-name">City-scale Integration R2500</span>
+          <span class="prog-phase-name pending" id="ph-r2500-name">30-min walk — Integration + Choice</span>
           <span class="prog-phase-count" id="ph-r2500-count"></span>
         </div>
         <div class="prog-phase-row" id="ph-prox">
@@ -454,6 +451,7 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
       </div>
     </div>
   </div>
+  <div id="live-area" style="position:absolute;top:14px;left:50%;transform:translateX(-50%);z-index:600;padding:7px 16px;border-radius:6px;font-family:monospace;font-size:12px;font-weight:600;pointer-events:none;display:none;white-space:nowrap"></div>
   <div class="phase-label" id="phase-label">
     <div class="phase-name" id="phase-name"></div>
     <div class="phase-sub" id="phase-sub"></div>
@@ -517,6 +515,91 @@ function switchBaseMap(name) {
 }
 
 /* ════════════════════════════════════════════════
+   SUGGESTED 15-MIN MODULE
+   A passive ghost box (2 km²) centred on the current
+   map view. Fixed AREA — a pedestrian's 15-min effort
+   covers the same distance regardless of road density,
+   so the module is a consistent walkable footprint.
+   Debounced: settles after panning stops.
+════════════════════════════════════════════════ */
+const SUGGEST_AREA_KM2 = 2.0;          // target module size
+let suggestOn = false;
+let suggestLayer = null;
+let suggestBtnEl = null;
+let suggestDebounce = null;
+
+function toggleSuggestModule(){
+  suggestOn = !suggestOn;
+  if(!suggestBtnEl) suggestBtnEl = document.getElementById('suggest-btn');
+  suggestBtnEl.style.background = suggestOn ? '#c8a96e' : '';
+  suggestBtnEl.style.color      = suggestOn ? '#0d0d0d' : '';
+  if(suggestOn){ drawSuggestBox(); }
+  else { clearSuggestBox(); }
+}
+
+function clearSuggestBox(){
+  if(suggestLayer){ map.removeLayer(suggestLayer); suggestLayer=null; }
+  const btn=document.getElementById('use-suggest-btn');
+  if(btn) btn.remove();
+}
+
+function drawSuggestBox(){
+  clearSuggestBox();
+  if(!suggestOn) return;
+  const c = map.getCenter();
+  // Side length for the target area, in metres
+  const sideM = Math.sqrt(SUGGEST_AREA_KM2 * 1e6); // e.g. 2 km² → ~1414 m
+  const half = sideM/2;
+  // Convert metres to degrees at this latitude
+  const latDeg = half / 111320;
+  const lngDeg = half / (111320 * Math.cos(c.lat*Math.PI/180));
+  const corners = [
+    [c.lat - latDeg, c.lng - lngDeg],
+    [c.lat - latDeg, c.lng + lngDeg],
+    [c.lat + latDeg, c.lng + lngDeg],
+    [c.lat + latDeg, c.lng - lngDeg]
+  ];
+  suggestLayer = L.polygon(corners, {
+    color:'#c8a96e', weight:2, dashArray:'8,5',
+    fillColor:'#c8a96e', fillOpacity:0.06, interactive:false
+  }).addTo(map);
+
+  // Floating "Use this module" button near the box
+  let btn=document.getElementById('use-suggest-btn');
+  if(!btn){
+    btn=document.createElement('button');
+    btn.id='use-suggest-btn';
+    btn.textContent='✓ Use this 2 km² module';
+    btn.style.cssText=`position:absolute;z-index:600;left:50%;top:60px;transform:translateX(-50%);
+      background:#c8a96e;color:#0d0d0d;border:none;border-radius:5px;padding:8px 16px;
+      font-family:inherit;font-size:11px;font-weight:700;letter-spacing:.05em;cursor:pointer;
+      box-shadow:0 2px 12px rgba(0,0,0,.4)`;
+    btn.onclick=adoptSuggestBox;
+    document.getElementById('map-panel').appendChild(btn);
+  }
+}
+
+function adoptSuggestBox(){
+  if(!suggestLayer) return;
+  // Convert the box corners to [lon,lat] and apply as study boundary
+  const latlngs = suggestLayer.getLatLngs()[0];
+  const coordsLonLat = latlngs.map(ll=>[ll.lng, ll.lat]);
+  // Turn off suggestion mode
+  suggestOn=false;
+  if(suggestBtnEl){ suggestBtnEl.style.background=''; suggestBtnEl.style.color=''; }
+  clearSuggestBox();
+  applyBoundary('study', coordsLonLat);
+  showToast('Suggested 2 km² module adopted — drag nodes to adjust');
+}
+
+// Redraw the suggestion (debounced) whenever the view settles
+map.on('moveend zoomend', ()=>{
+  if(!suggestOn) return;
+  clearTimeout(suggestDebounce);
+  suggestDebounce = setTimeout(drawSuggestBox, 250);
+});
+
+/* ════════════════════════════════════════════════
    KML PARSER
 ════════════════════════════════════════════════ */
 function kmlToGeoJSON(txt){
@@ -565,6 +648,35 @@ function updateDrawVis(){
   const col=getCol(drawMode);
   if(drawPts.length>=3) drawPoly=L.polygon(drawPts,{color:col,weight:2,fillColor:col,fillOpacity:.07,dashArray:'6,3'}).addTo(map);
   else if(drawPts.length>=2) drawLine=L.polyline(drawPts,{color:col,weight:2,dashArray:'6,3'}).addTo(map);
+  // Live area readout while drawing study area
+  if(drawMode==='study') updateLiveArea();
+}
+
+function updateLiveArea(){
+  const badge=document.getElementById('live-area');
+  if(drawPts.length<3){ if(badge) badge.style.display='none'; return; }
+  // drawPts are [lat,lon]; turf needs [lon,lat]
+  let area=null;
+  try{
+    const ring=drawPts.map(p=>[p[1],p[0]]);
+    ring.push(ring[0]);
+    area=turf.area(turf.polygon([ring]))/1e6;
+  }catch(e){ return; }
+  if(area==null) return;
+  let lvl, txt;
+  if(area>MAX_AREA_KM2){ lvl='too-large'; txt='⚠ '+area.toFixed(2)+' km² · exceeds '+MAX_AREA_KM2+' km² limit'; }
+  else if(area>WARN_AREA_KM2){ lvl='warn'; txt='⚡ '+area.toFixed(2)+' km² · large, may be slow'; }
+  else { lvl='ok'; txt='✓ '+area.toFixed(2)+' km² · good size'; }
+  if(!badge){ return; }
+  badge.style.display='block';
+  const colors={
+    'too-large':{bg:'rgba(200,74,74,.95)',bd:'#ff7a7a',tx:'#fff'},
+    'warn':{bg:'rgba(200,143,32,.95)',bd:'#ffcc44',tx:'#fff'},
+    'ok':{bg:'rgba(30,50,30,.95)',bd:'#4a9a4a',tx:'#aaffaa'}
+  };
+  const c=colors[lvl];
+  badge.style.background=c.bg; badge.style.border='1px solid '+c.bd; badge.style.color=c.tx;
+  badge.textContent=txt;
 }
 function updatePreview(ll){
   if(!drawMode||!drawPts.length)return;
@@ -614,6 +726,8 @@ function cancelDraw(){
     document.getElementById(id).textContent=drawMode==='study'?'Draw Study Area':'Draw Global Context';
   }
   drawMode=null;map.getContainer().style.cursor='';
+  const badge=document.getElementById('live-area');
+  if(badge) badge.style.display='none';
 }
 function addEditNodes(type, pts){
   // pts = [[lat,lon],...] in Leaflet format
@@ -757,7 +871,7 @@ function autoGenerateContext(){
   try{
     const ring = [...bounds.study, bounds.study[0]];
     const studyPoly = turf.polygon([ring]);
-    const buffered = turf.buffer(studyPoly, 0.8, {units:'kilometers'});
+    const buffered = turf.buffer(studyPoly, 1.25, {units:'kilometers'}); // 15-min walk radius (covers SS + attractors)
     if(!buffered||!buffered.geometry) return;
     const simplified = turf.simplify(buffered, {tolerance:0.0008, highQuality:true});
     const simCoords = simplified.geometry.type==='Polygon'
@@ -766,7 +880,7 @@ function autoGenerateContext(){
     // Store as [lon,lat]
     const coordsLonLat = simCoords.map(c=>[c[0],c[1]]);
     applyBoundary('ctx', coordsLonLat);
-    showToast('Global context auto-set to 800m buffer');
+    showToast('Buffer auto-set to 1.25km (15-min walk catchment)');
   } catch(e){ console.error('Auto-context failed:',e); showToast('Auto-context failed — draw manually'); }
 }
 
@@ -1429,42 +1543,41 @@ Heap.prototype.pop=function(){
 };
 Heap.prototype.empty=function(){return!this.h.length;};
 
-// Runs SS over a SUBSET of origins [originStart, originEnd)
-// choiceOrigins: optional array of origin indices to use for betweenness
-//   (sampled betweenness). If null, every origin in range contributes to choice.
-function runSS(graph, n, metRadius, originList, choiceSet, workerId) {
+// CSR graph: head[i]..head[i+1] index into eTo/eAng/eMet
+function runSS(head, eTo, eAng, eMet, n, metRadius, originList, choiceSet, workerId) {
   const startTime = Date.now();
   const totDepth = new Float64Array(n);
   const nodeCnt  = new Float64Array(n);
   const choice   = new Float64Array(n);
   const total    = originList.length;
-  const REPORT   = 5;
+  const REPORT   = 10;
+
+  // Reusable buffers
+  const aD   = new Float32Array(n);
+  const mD   = new Float32Array(n);
+  const pred = new Int32Array(n);
 
   for(let oi=0; oi<total; oi++){
     const src = originList[oi];
-    const aD   = new Float32Array(n).fill(Infinity);
-    const mD   = new Float32Array(n).fill(Infinity);
-    const pred = new Int32Array(n).fill(-1);
+    aD.fill(Infinity); mD.fill(Infinity); pred.fill(-1);
     aD[src]=0; mD[src]=0;
     const pq = new Heap(); pq.push({i:src,a:0,m:0});
     while(!pq.empty()){
       const{i,a,m}=pq.pop();
       if(a>aD[i])continue;
-      const edges=graph[i];
-      for(let e=0;e<edges.length;e++){
-        const{to,ang,met}=edges[e];
-        const nm=m+met;
+      const start=head[i], end=head[i+1];
+      for(let e=start;e<end;e++){
+        const to=eTo[e];
+        const nm=m+eMet[e];
         if(metRadius!==Infinity&&nm>metRadius)continue;
-        const na=a+ang;
+        const na=a+eAng[e];
         if(na<aD[to]){aD[to]=na;mD[to]=nm;pred[to]=i;pq.push({i:to,a:na,m:nm});}
       }
     }
-    // Integration: every origin contributes (exact)
     for(let dst=0;dst<n;dst++){
       if(dst===src||aD[dst]===Infinity)continue;
       totDepth[dst]+=aD[dst]; nodeCnt[dst]++;
     }
-    // Choice/betweenness: only if this origin is in the choice set
     if(!choiceSet || choiceSet[src]){
       for(let dst=0;dst<n;dst++){
         if(dst===src||aD[dst]===Infinity)continue;
@@ -1487,9 +1600,9 @@ function runSS(graph, n, metRadius, originList, choiceSet, workerId) {
 }
 
 self.onmessage = function(e){
-  const{graph, n, metRadius, originList, choiceSet, workerId} = e.data;
+  const{head, eTo, eAng, eMet, n, metRadius, originList, choiceSet, workerId} = e.data;
   self.postMessage({type:'progress', src:0, n:originList.length, remaining:0, workerId});
-  const result = runSS(graph, n, metRadius, originList, choiceSet, workerId);
+  const result = runSS(head, eTo, eAng, eMet, n, metRadius, originList, choiceSet, workerId);
   self.postMessage({type:'done', result, workerId});
 };
 `;
@@ -1527,7 +1640,7 @@ function runSSInWorker(graph, n, metRadius, label, pctFrom, pctTo){
   return new Promise((resolve, reject) => {
     const nW = workerCount();
     const { choiceSet, sampleInfo } = buildChoiceSet(n);
-    const phId = label.includes('R800')?'nain800':label.includes('R1200')?'nach1200':'r2500';
+    const phId = label.includes('15min')?'nain800':'r2500';
 
     // Partition origins 0..n-1 round-robin across workers (even load)
     const originLists = Array.from({length:nW}, ()=>[]);
@@ -1560,6 +1673,23 @@ function runSSInWorker(graph, n, metRadius, label, pctFrom, pctTo){
 
     function cleanup(){ clearInterval(timeout); workers.forEach(w=>w.terminate()); }
 
+    // Build CSR (compressed sparse row) flat arrays ONCE — shared by all workers
+    let edgeTotal=0;
+    for(let i=0;i<n;i++) edgeTotal += graph[i].length;
+    const head = new Int32Array(n+1);
+    const eTo  = new Int32Array(edgeTotal);
+    const eAng = new Float32Array(edgeTotal);
+    const eMet = new Float32Array(edgeTotal);
+    let ei=0;
+    for(let i=0;i<n;i++){
+      head[i]=ei;
+      const edges=graph[i];
+      for(let k=0;k<edges.length;k++){
+        eTo[ei]=edges[k].to; eAng[ei]=edges[k].ang; eMet[ei]=edges[k].met; ei++;
+      }
+    }
+    head[n]=ei;
+
     for(let w=0; w<nW; w++){
       const worker=makeSSWorker();
       workers.push(worker);
@@ -1567,13 +1697,12 @@ function runSSInWorker(graph, n, metRadius, label, pctFrom, pctTo){
         lastProgress=Date.now();
         const {type, src, result, workerId}=e.data;
         if(type==='progress'){
-          progressPerWorker[workerId]=src; // origins done in this worker
+          progressPerWorker[workerId]=src;
           const totalDone=progressPerWorker.reduce((s,v)=>s+v,0);
           const pct=pctFrom+(pctTo-pctFrom)*(totalDone/n);
           const remStr=e.data.remaining>0?'  (~'+e.data.remaining+'s)':'';
           setP(pct, label+' — '+totalDone+'/'+n+' origins · '+nW+' cores'+remStr, phId, totalDone+'/'+n);
         } else if(type==='done'){
-          // Merge this worker's partial results
           for(let i=0;i<n;i++){
             totDepth[i]+=result.totDepth[i];
             nodeCnt[i] +=result.nodeCnt[i];
@@ -1582,7 +1711,6 @@ function runSSInWorker(graph, n, metRadius, label, pctFrom, pctTo){
           done++;
           if(done===nW && !failed){
             cleanup();
-            // If we sampled choice, scale it up to estimate full betweenness
             if(choiceSet){
               let sampled=0; for(let i=0;i<n;i++) sampled+=choiceSet[i];
               const scale = n / Math.max(1,sampled);
@@ -1605,72 +1733,44 @@ function runSSInWorker(graph, n, metRadius, label, pctFrom, pctTo){
         showToast('Space Syntax worker failed — check console');
         if(!failed){ failed=true; reject(err); }
       };
-      worker.postMessage({ graph, n, metRadius, originList:originLists[w], choiceSet, workerId:w });
+      // Copy CSR arrays per worker (cloned via structured clone — fast for typed arrays)
+      worker.postMessage({
+        head, eTo, eAng, eMet, n, metRadius,
+        originList:originLists[w], choiceSet, workerId:w
+      });
     }
   });
 }
 
 async function computeSS(sSegs, cSegs, sGraph, cGraph, pctStart, pctEnd) {
+  // Single walkability radius (5 km/h): 15 min = 1250m.
+  // Runs on ALL segments (study + buffer) so every study-core road sees its
+  // full 15-min catchment. Longer-range 'destination pull' is carried entirely
+  // by trip-attractor proximity, not by any larger SS radius.
+  const R15 = 1250;
   const n    = sSegs.length;
-  const cn   = cSegs.length;
   const span = pctEnd - pctStart;
 
-  // Serialise graphs to plain arrays for worker transfer
   function serGraph(graph){ return graph.map(edges => edges.map(({to,ang,met})=>({to,ang,met}))); }
   const sG = serGraph(sGraph);
-  const cG = (cSegs === sSegs) ? sG : serGraph(cGraph);
 
-  // ── NAIN R800 ── (pctStart → +30%)
-  setP(pctStart, 'NAIN R800 — starting...');
-  const r800 = await runSSInWorker(sG, n, 800,
-    'NAIN R800', pctStart, pctStart + span*0.40);
+  setP(pctStart, '15-min walk (NAIN + NACH R1250)...','nain800');
+  const r15 = await runSSInWorker(sG, n, R15,
+    'NAIN+NACH 15min R1250', pctStart, pctEnd);
   sSegs.forEach((s,i)=>{
-    const nc=r800.nodeCnt[i], td=r800.totDepth[i];
-    s._li8_raw = nc>0 ? Math.pow(nc,1.2)/(td+2) : 0;
+    const nc=r15.nodeCnt[i], td=r15.totDepth[i];
+    s._li8_raw = nc>0 ? Math.pow(nc,1.2)/(td+2) : 0;            // integration
+    s._ch1200_raw = td>0 ? Math.log(r15.choice[i]+1)/Math.log(td+3) : 0; // choice
   });
 
-  // ── NACH R1200 ── (+30% → +55%)
-  setP(pctStart + span*0.40, 'NACH R1200 — starting...','nach1200');
-  const r1200 = await runSSInWorker(sG, n, 1200,
-    'NACH R1200', pctStart + span*0.40, pctStart + span*0.70);
-  sSegs.forEach((s,i)=>{
-    const td=r1200.totDepth[i];
-    s._ch1200_raw = td>0 ? Math.log(r1200.choice[i]+1)/Math.log(td+3) : 0;
-  });
-
-  // ── City-scale NAIN + NACH R2500 ── (+55% → +100%)
-  // R2500 is a practical city-scale proxy — segments 2.5km away
-  // have negligible influence on pedestrian decisions anyway
-  setP(pctStart + span*0.70, 'City-scale Integration R2500 — starting...','r2500');
-  const rn = await runSSInWorker(cG, cn, 2500,
-    'City-scale NAIN/NACH R2500', pctStart + span*0.70, pctEnd);
-
-  if(cSegs === sSegs){
-    sSegs.forEach((s,i)=>{
-      const nc=rn.nodeCnt[i], td=rn.totDepth[i];
-      s._gi_raw  = nc>0 ? Math.pow(nc,1.2)/(td+2) : 0;
-      s._gch_raw = td>0 ? Math.log(rn.choice[i]+1)/Math.log(td+3) : 0;
-    });
-  } else {
-    const ctxMids   = cSegs.map(cs=>cs._mid);
-    const giScores  = cSegs.map((_,ci)=>{ const nc=rn.nodeCnt[ci],td=rn.totDepth[ci]; return nc>0?Math.pow(nc,1.2)/(td+2):0; });
-    const gchScores = cSegs.map((_,ci)=>{ const td=rn.totDepth[ci]; return td>0?Math.log(rn.choice[ci]+1)/Math.log(td+3):0; });
-    sSegs.forEach(ss=>{
-      const mid=ss._mid; let bestGi=0,bestGch=0,bestD=Infinity;
-      ctxMids.forEach((cm,ci)=>{
-        const d=(mid[0]-cm[0])**2+(mid[1]-cm[1])**2;
-        if(d<bestD){bestD=d;bestGi=giScores[ci];bestGch=gchScores[ci];}
-      });
-      ss._gi_raw=bestGi; ss._gch_raw=bestGch;
-    });
-  }
-
-  // Normalise 0-1
-  const norm=(arr,raw,field)=>{const mx=Math.max(1,...arr.map(s=>s[raw]));arr.forEach(s=>{s[field]=s[raw]/mx;});};
-  norm(sSegs,'_li8_raw','_li8');
-  norm(sSegs,'_ch1200_raw','_ch');
-  norm(sSegs,'_gi_raw','_gi');
-  norm(sSegs,'_gch_raw','_gch');
+  // Normalise 0-1 — over CORE segments only (buffer excluded from the scale)
+  const core = sSegs.filter(s=>s._inStudy);
+  const norm=(field,raw)=>{
+    const mx=Math.max(1,...core.map(s=>s[raw]));
+    sSegs.forEach(s=>{ s[field]=s[raw]/mx; });
+  };
+  norm('_li8','_li8_raw');
+  norm('_ch','_ch1200_raw');
 }
 
 /* ════════════════════════════════════════════════
@@ -1756,7 +1856,7 @@ function computeProximity(segs,graph,attConfigs){
 ════════════════════════════════════════════════ */
 function grade(segs,ssW,proxW,p1t,p2t,p3t,wN){
   segs.forEach(s=>{
-    s._ss=s._coN*wN[0]+s._li8*wN[1]+s._gi*wN[2]+s._ch*wN[3]+s._gch*wN[4];
+    s._ss=s._coN*wN[0]+s._li8*wN[1]+s._ch*wN[2];
     s._final=s._ss*ssW+s._px*proxW;
   });
   const sorted=[...segs].sort((a,b)=>b._final-a._final);
@@ -1826,7 +1926,7 @@ function reGrade(){
   const p1t=parseInt(document.getElementById('p1t').value)/100;
   const p2t=parseInt(document.getElementById('p2t').value)/100;
   const p3t=parseInt(document.getElementById('p3t').value)/100;
-  const wKeys=['conn','li8','gi','ch','gch'];
+  const wKeys=['conn','li8','ch'];
   const wRaw=wKeys.map(k=>parseInt(document.getElementById('w-'+k).value));
   const wTot=wRaw.reduce((s,v)=>s+v,0)||100;
   const wN=wRaw.map(v=>v/wTot);
@@ -1930,24 +2030,14 @@ async function runAnimatedReveal(segs, sGraph, attConfigs, ssW, proxW, p1t, p2t,
     s => heatColor(s._coN), s => 1.5 + s._coN * 3);
   await sleep(HOLD);
 
-  // Phase 2 — NAIN R800 (local integration)
-  showPhase(segs, 'Local Integration  ·  NAIN R800', 'How central each street is within 800m walking',
+  // Phase 2 — 15-min Integration
+  showPhase(segs, '15-min Integration  ·  NAIN R1250', 'How central each street is within a 15-min walk',
     s => heatColor(s._li8), s => 1.5 + s._li8 * 3.5);
   await sleep(HOLD);
 
-  // Phase 3 — NACH R1200 (local choice)
-  showPhase(segs, 'Local Choice  ·  NACH R1200', 'Through-movement desire lines within 1200m',
+  // Phase 3 — 15-min Choice
+  showPhase(segs, '15-min Choice  ·  NACH R1250', 'Through-movement desire lines within a 15-min walk',
     s => heatColor(s._ch), s => 1.5 + s._ch * 3.5);
-  await sleep(HOLD);
-
-  // Phase 4 — Global Integration
-  showPhase(segs, 'Global Integration  ·  NAIN Rn', 'Position in the city-wide network',
-    s => heatColor(s._gi), s => 1.5 + s._gi * 3.5);
-  await sleep(HOLD);
-
-  // Phase 5 — Global Choice
-  showPhase(segs, 'City-scale Choice  ·  NACH R2500', 'Through-movement at city scale',
-    s => heatColor(s._gch), s => 1.5 + s._gch * 3.5);
   await sleep(HOLD);
 
   // Phase 6 — Combined SS score
@@ -2010,9 +2100,7 @@ function showInfo(s){
   document.getElementById('iv-ss').textContent=(s._ss||0).toFixed(3);
   document.getElementById('iv-co').textContent=(s._coN||0).toFixed(3)+' ('+s._co+')';
   document.getElementById('iv-l8').textContent=(s._li8||0).toFixed(4);
-  document.getElementById('iv-gi').textContent=(s._gi||0).toFixed(4);
   document.getElementById('iv-ch').textContent=(s._ch||0).toFixed(4);
-  document.getElementById('iv-gch').textContent=(s._gch||0).toFixed(4);
   document.getElementById('iv-px').textContent=(s._px||0).toFixed(3)+' (raw:'+s._pxRaw.toFixed(2)+')';
   document.getElementById('iv-px-det').innerHTML=Object.entries(s._pxDet||{}).map(([k,v])=>`
     <div class="ir"><span class="il" style="padding-left:8px">↳ ${k}</span><span class="iv">${v.toFixed(2)}</span></div>`).join('');
@@ -2096,7 +2184,7 @@ function startAnalysisClock(){
 
 /* ── Weights sync ── */
 function syncSSW(){
-  const keys=['conn','li8','gi','ch','gch'];
+  const keys=['conn','li8','ch'];
   const vals=keys.map(k=>parseInt(document.getElementById('w-'+k).value));
   const tot=vals.reduce((s,v)=>s+v,0);
   keys.forEach((k,i)=>{ const el=document.getElementById('wv-'+k); if(el) el.textContent=vals[i]+'%'; });
@@ -2154,7 +2242,7 @@ async function runAnalysis(){
   const p1t=parseInt(document.getElementById('p1t').value)/100;
   const p2t=parseInt(document.getElementById('p2t').value)/100;
   const p3t=parseInt(document.getElementById('p3t').value)/100;
-  const wKeys=['conn','li8','gi','ch','gch'];
+  const wKeys=['conn','li8','ch'];
   const wRaw=wKeys.map(k=>parseInt(document.getElementById('w-'+k).value));
   const wTot=wRaw.reduce((s,v)=>s+v,0)||100;
   const wN=wRaw.map(v=>v/wTot);
@@ -2177,21 +2265,22 @@ async function runAnalysis(){
   setP(3,'Preparing networks...');await sleep(30);
 
   let studyNet=JSON.parse(JSON.stringify(city.network));
-  let ctxNet=studyNet;
 
   // ── Clip ──
-  setP(7,'Clipping to study area...','clip');await sleep(20);
-  if(bounds.study){ studyNet=clipNet(studyNet,bounds.study); }
-  if(bounds.ctx)  { ctxNet=clipNet(JSON.parse(JSON.stringify(city.network)),bounds.ctx); }
-  const clippedCount = studyNet.features ? studyNet.features.length : 0;
-  setPhase('clip'); setPhaseCount('clip', clippedCount+' features clipped');
+  // Work on the BUFFER network (study + 15-min ring) if a context boundary exists.
+  // We segment all of it but only grade/show the study core. The buffer gives
+  // edge roads their full catchment and lets cross-boundary attractors reach in.
+  setP(7,'Clipping to study area + buffer...','clip');await sleep(20);
+  const workBoundary = bounds.ctx || bounds.study;
+  let workNet = studyNet;
+  if(workBoundary){ workNet = clipNet(studyNet, workBoundary); }
+  const clippedCount = workNet.features ? workNet.features.length : 0;
+  setPhase('clip'); setPhaseCount('clip', clippedCount+' features clipped (study + buffer)');
   await sleep(100);
 
   // ── Clean ──
   setP(10,'Cleaning network — Pass 1: removing duplicates & slivers...','clean');await sleep(30);
-  // Note: cleanNetwork runs inside segRoads, we do a preview here for the UI
-  // Pre-run clean to show stats before segmentation
-  const preClean = cleanNetwork(studyNet);
+  const preClean = cleanNetwork(workNet);
   const cs = preClean._cleanStats || {};
   setPhaseCount('clean',
     (cs.before||'?')+' → '+(cs.after||'?')+' features · '+(cs.reduction||0)+'% removed');
@@ -2201,56 +2290,69 @@ async function runAnalysis(){
   // ── Segment ──
   setP(17,'Segmenting at junctions + collinear merge...','seg');await sleep(30);
   // segRoads calls cleanNetwork again internally (fast, already processed)
-  const sSegs=segRoads(preClean); // pass pre-cleaned network directly
-  if(!sSegs.length){document.getElementById('prog-overlay').style.display='none';showToast('No segments found — check file or boundary');return;}
+  // allSegs = study + buffer segments. SS & proximity run on ALL of these so
+  // study-edge roads get their full 15-min catchment and cross-boundary
+  // attractors propagate inward. Only study-core segments are graded & shown.
+  const allSegs=segRoads(preClean);
+  if(!allSegs.length){document.getElementById('prog-overlay').style.display='none';showToast('No segments found — check file or boundary');return;}
 
-  const ss = sSegs._segStats || {};
+  // Mark which segments fall inside the study boundary (the graded core)
+  let studyPolyGeo=null;
+  if(bounds.study){
+    try{ const ring=[...bounds.study,bounds.study[0]]; studyPolyGeo=turf.polygon([ring]); }catch(e){}
+  }
+  allSegs.forEach(s=>{
+    if(!studyPolyGeo){ s._inStudy=true; return; }
+    try{ s._inStudy=turf.booleanPointInPolygon(turf.point(s._mid), studyPolyGeo); }
+    catch(e){ s._inStudy=true; }
+  });
+  const coreSegs=allSegs.filter(s=>s._inStudy);
+
+  const ss = allSegs._segStats || {};
   const studyAreaKm2 = bounds.study ? estimateAreaKm2(bounds.study.map(c=>[c[1],c[0]])) : null;
   const areaMsg = studyAreaKm2 ? ' ('+studyAreaKm2.toFixed(1)+' km²)' : '';
   setPhaseCount('seg',
-    (ss.raw||'?')+' raw → '+(ss.chains||'?')+' chains → '+sSegs.length+' segments'+areaMsg);
-  setP(20,'Segmentation complete: '+sSegs.length+' junction segments'+areaMsg,'seg');
-  await sleep(800); // pause — let user read the cleaning stats
+    coreSegs.length+' core + '+(allSegs.length-coreSegs.length)+' buffer segments'+areaMsg);
+  setP(20,'Segmented: '+coreSegs.length+' core, '+allSegs.length+' total (with buffer)','seg');
+  await sleep(800);
 
   const MAX_SEGS = 6000;
-  if(sSegs.length > MAX_SEGS){
+  if(allSegs.length > MAX_SEGS){
     document.getElementById('prog-overlay').style.display='none';
-    showToast('⚠ '+sSegs.length+' segments'+areaMsg+' — draw a smaller study area');
-    alert('Study area produces '+sSegs.length+' segments'+areaMsg+
-      '.\n\nAfter cleaning and merging, this is still too large.\n\nTarget: under 2000 segments.\n\nTip: draw a tighter Study Area — try a single neighbourhood (0.5–1.5 km²).');
+    showToast('⚠ '+allSegs.length+' segments (incl. buffer)'+areaMsg+' — draw a smaller study area');
+    alert('This study area + 15-min buffer produces '+allSegs.length+' segments'+areaMsg+
+      '.\n\nTarget: under 6000 total.\n\nTip: draw a tighter Study Area — a single 15-min neighbourhood (0.5–1.5 km²).');
     return;
   }
-  showToast('✓ '+sSegs.length+' segments'+areaMsg+' — starting Space Syntax');
-
-  setP(22,'Segmenting context at 200m intervals...');await sleep(20);
-  // Context uses simplified 150m segmentation — just needs topology for global scores
-  const cSegs = bounds.ctx ? segRoadsSimple(ctxNet, 200) : sSegs;
+  showToast('✓ '+coreSegs.length+' core segments — starting analysis');
 
   setP(28,'Building angular dual graph...');await sleep(20);
-  const sGraph=buildGraph(sSegs);
-  const cGraph=bounds.ctx?buildGraph(cSegs):sGraph;
+  const sGraph=buildGraph(allSegs);
   lastGraph=sGraph;
 
-  // Connectivity
+  // Connectivity (on all segments)
   setP(33,'Computing connectivity...','conn');await sleep(10);
-  setPhaseCount('conn',sSegs.filter((_,i)=>sGraph[i]&&sGraph[i].length>0).length+' connected');
-  const maxConn=Math.max(1,...sSegs.map((s,i)=>sGraph[i]?sGraph[i].length:0));
-  sSegs.forEach((s,i)=>{s._co=sGraph[i]?sGraph[i].length:0;s._coN=s._co/maxConn;});
+  setPhaseCount('conn',allSegs.filter((_,i)=>sGraph[i]&&sGraph[i].length>0).length+' connected');
+  const maxConn=Math.max(1,...allSegs.map((s,i)=>sGraph[i]?sGraph[i].length:0));
+  allSegs.forEach((s,i)=>{s._co=sGraph[i]?sGraph[i].length:0;s._coN=s._co/maxConn;});
 
-  // Space Syntax — full computation
-  setP(38,'Space Syntax — '+sSegs.length+' junction segments...','nain800');await sleep(30);
-  await computeSS(sSegs, cSegs, sGraph, cGraph, 38, 80);
-  setP(80,'Space Syntax complete','r2500',sSegs.length+' segs scored');await sleep(20);
+  // Space Syntax — single 15-min radius, computed on all segments
+  setP(38,'Space Syntax (15-min walk) — '+allSegs.length+' segments...','nain800');await sleep(30);
+  await computeSS(allSegs, allSegs, sGraph, sGraph, 38, 78);
+  setP(78,'Space Syntax complete','nain800',coreSegs.length+' core scored');await sleep(20);
 
-  // Proximity — snap-to-network
-  setP(80,'Computing proximity — snapping to network...','prox');await sleep(20);
+  // Proximity — boundary-agnostic: all attractors snap to allSegs (incl. buffer)
+  setP(80,'Computing proximity — all attractors within reach...','prox');await sleep(20);
   const attConfigs=atts.map((a,i)=>({...a,vis:attVis[i]!==false}));
-  computeProximity(sSegs,sGraph,attConfigs);
+  computeProximity(allSegs,sGraph,attConfigs);
 
-  // Grade
+  // Grade — rank only the study-core segments (buffer excluded from percentiles)
   setP(92,'Grading PWN — 4 tiers...','grade');await sleep(20);
-  grade(sSegs,ssW,proxW,p1t,p2t,p3t,wN);
-  segments=sSegs;
+  grade(coreSegs,ssW,proxW,p1t,p2t,p3t,wN);
+  // Buffer segments get no grade (won't be displayed)
+  allSegs.forEach(s=>{ if(!s._inStudy) s._pwn=null; });
+  segments=coreSegs;
+  const sSegs=coreSegs; // alias for downstream code (stats, reveal)
 
   // Hide progress overlay — animated reveal takes over
   setP(99,'Animating results...','reveal');
