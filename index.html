@@ -1466,7 +1466,7 @@ function angCost(bA,bB){
   let d=Math.abs(bA-bB);if(d>180)d=360-d;return d/180;
 }
 function buildGraph(segs){
-  const SNAP1=0.00008,SNAP2=0.00020,nmap1={},nmap2={};
+  const SNAP1=0.00008,SNAP2=0.00030,nmap1={},nmap2={};
   const key1=c=>Math.round(c[0]/SNAP1)+','+Math.round(c[1]/SNAP1);
   const key2=c=>Math.round(c[0]/SNAP2)+','+Math.round(c[1]/SNAP2);
   const bearings=segs.map(bearing);
@@ -1847,8 +1847,10 @@ function computeProximity(segs,graph,attConfigs){
     });
   });
 
-  // Min-max normalise
-  const mx=Math.max(1,...segs.map(s=>s._pxRaw));
+  // Min-max normalise — over CORE segments only, so a high-scoring buffer
+  // road doesn't compress the core's proximity scale (matches SS normalisation)
+  const coreForNorm = segs.filter(s=>s._inStudy!==false);
+  const mx=Math.max(1,...coreForNorm.map(s=>s._pxRaw));
   segs.forEach(s=>{s._px=s._pxRaw/mx;});
 }
 
@@ -2267,62 +2269,66 @@ async function runAnalysis(){
 
   let studyNet=JSON.parse(JSON.stringify(city.network));
 
-  // ── Clip ──
-  // Work on the BUFFER network (study + 15-min ring) if a context boundary exists.
-  // We segment all of it but only grade/show the study core. The buffer gives
-  // edge roads their full catchment and lets cross-boundary attractors reach in.
-  setP(7,'Clipping to study area + buffer...','clip');await sleep(20);
-  const workBoundary = bounds.ctx || bounds.study;
-  let workNet = studyNet;
-  if(workBoundary){ workNet = clipNet(studyNet, workBoundary); }
-  const clippedCount = workNet.features ? workNet.features.length : 0;
-  setPhase('clip'); setPhaseCount('clip', clippedCount+' features clipped (study + buffer)');
-  await sleep(100);
+  // ── Clip + segment at TWO resolutions ──
+  // Core (study area): junction-level detail — this is what gets graded.
+  // Buffer ring (study→1.25km): coarse 200m — only provides catchment topology.
+  // This keeps the buffer cheap: a small core no longer drags in thousands
+  // of fine buffer segments.
+  setP(7,'Clipping core + buffer...','clip');await sleep(20);
 
-  // ── Clean ──
-  setP(10,'Cleaning network — Pass 1: removing duplicates & slivers...','clean');await sleep(30);
-  const preClean = cleanNetwork(workNet);
-  const cs = preClean._cleanStats || {};
-  setPhaseCount('clean',
-    (cs.before||'?')+' → '+(cs.after||'?')+' features · '+(cs.reduction||0)+'% removed');
-  setP(13,'Network cleaned — Pass 2: consolidating nodes within 10m...','clean');await sleep(200);
-  setP(15,'Network cleaned — Pass 3: final deduplication...','clean');await sleep(100);
+  const coreBoundary = bounds.study || bounds.ctx;
+  const bufBoundary  = bounds.ctx || bounds.study;
 
-  // ── Segment ──
-  setP(17,'Segmenting at junctions + collinear merge...','seg');await sleep(30);
-  // segRoads calls cleanNetwork again internally (fast, already processed)
-  // allSegs = study + buffer segments. SS & proximity run on ALL of these so
-  // study-edge roads get their full 15-min catchment and cross-boundary
-  // attractors propagate inward. Only study-core segments are graded & shown.
-  const allSegs=segRoads(preClean);
-  if(!allSegs.length){document.getElementById('prog-overlay').style.display='none';showToast('No segments found — check file or boundary');return;}
+  // Core network — fine
+  let coreNet = clipNet(studyNet, coreBoundary);
+  setPhase('clip'); setPhaseCount('clip',(coreNet.features?coreNet.features.length:0)+' core features');
+  await sleep(80);
 
-  // Mark which segments fall inside the study boundary (the graded core)
-  let studyPolyGeo=null;
-  if(bounds.study){
-    try{ const ring=[...bounds.study,bounds.study[0]]; studyPolyGeo=turf.polygon([ring]); }catch(e){}
+  setP(11,'Cleaning + segmenting core (junction level)...','clean');await sleep(20);
+  const coreClean = cleanNetwork(coreNet);
+  const cs = coreClean._cleanStats || {};
+  setPhaseCount('clean',(cs.before||'?')+' → '+(cs.after||'?')+' core features · '+(cs.reduction||0)+'% removed');
+  await sleep(60);
+
+  setP(15,'Segmenting core at junctions...','seg');await sleep(20);
+  const coreSegsAll = segRoads(coreClean);
+  coreSegsAll.forEach(s=>{ s._inStudy=true; s._isBuffer=false; });
+
+  // Buffer ring — coarse. Segment the full buffer network at 200m, then DROP
+  // any segment whose midpoint is inside the core (avoid double-coverage).
+  let bufferSegs = [];
+  if(bufBoundary && bufBoundary!==coreBoundary){
+    setP(20,'Segmenting buffer ring (coarse 200m)...','seg');await sleep(20);
+    let bufNet = clipNet(JSON.parse(JSON.stringify(city.network)), bufBoundary);
+    const bufSimple = segRoadsSimple(bufNet, 200);
+    // Build core polygon for inside-test
+    let corePoly=null;
+    try{ const ring=[...coreBoundary,coreBoundary[0]]; corePoly=turf.polygon([ring]); }catch(e){}
+    bufSimple.forEach(s=>{
+      let inside=false;
+      if(corePoly){ try{ inside=turf.booleanPointInPolygon(turf.point(s._mid),corePoly); }catch(e){} }
+      if(!inside){ s._inStudy=false; s._isBuffer=true; bufferSegs.push(s); }
+    });
   }
-  allSegs.forEach(s=>{
-    if(!studyPolyGeo){ s._inStudy=true; return; }
-    try{ s._inStudy=turf.booleanPointInPolygon(turf.point(s._mid), studyPolyGeo); }
-    catch(e){ s._inStudy=true; }
-  });
-  const coreSegs=allSegs.filter(s=>s._inStudy);
 
-  const ss = allSegs._segStats || {};
+  // Combine — reassign sequential ids across the merged set
+  const allSegs = coreSegsAll.concat(bufferSegs);
+  allSegs.forEach((s,i)=>{ s._id=i; });
+  const coreSegs = coreSegsAll;
+
+  if(!coreSegs.length){document.getElementById('prog-overlay').style.display='none';showToast('No core segments — check boundary');return;}
+
   const studyAreaKm2 = bounds.study ? estimateAreaKm2(bounds.study.map(c=>[c[1],c[0]])) : null;
   const areaMsg = studyAreaKm2 ? ' ('+studyAreaKm2.toFixed(1)+' km²)' : '';
-  setPhaseCount('seg',
-    coreSegs.length+' core + '+(allSegs.length-coreSegs.length)+' buffer segments'+areaMsg);
-  setP(20,'Segmented: '+coreSegs.length+' core, '+allSegs.length+' total (with buffer)','seg');
-  await sleep(800);
+  setPhaseCount('seg', coreSegs.length+' core (fine) + '+bufferSegs.length+' buffer (coarse)'+areaMsg);
+  setP(24,'Segmented: '+coreSegs.length+' core + '+bufferSegs.length+' buffer','seg');
+  await sleep(700);
 
   const MAX_SEGS = 6000;
   if(allSegs.length > MAX_SEGS){
     document.getElementById('prog-overlay').style.display='none';
-    showToast('⚠ '+allSegs.length+' segments (incl. buffer)'+areaMsg+' — draw a smaller study area');
-    alert('This study area + 15-min buffer produces '+allSegs.length+' segments'+areaMsg+
-      '.\n\nTarget: under 6000 total.\n\nTip: draw a tighter Study Area — a single 15-min neighbourhood (0.5–1.5 km²).');
+    showToast('⚠ '+allSegs.length+' segments total — draw a smaller study area');
+    alert('Core + buffer = '+allSegs.length+' segments'+areaMsg+'.\n\nTarget: under 6000.\n\nTip: draw a tighter study area, or the buffer ring is too dense.');
     return;
   }
   showToast('✓ '+coreSegs.length+' core segments — starting analysis');
