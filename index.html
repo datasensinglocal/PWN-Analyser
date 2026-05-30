@@ -1429,14 +1429,19 @@ Heap.prototype.pop=function(){
 };
 Heap.prototype.empty=function(){return!this.h.length;};
 
-function runSS(graph, n, metRadius) {
+// Runs SS over a SUBSET of origins [originStart, originEnd)
+// choiceOrigins: optional array of origin indices to use for betweenness
+//   (sampled betweenness). If null, every origin in range contributes to choice.
+function runSS(graph, n, metRadius, originList, choiceSet, workerId) {
   const startTime = Date.now();
   const totDepth = new Float64Array(n);
   const nodeCnt  = new Float64Array(n);
   const choice   = new Float64Array(n);
-  const REPORT   = 5; // post progress every N origins for smooth bar
+  const total    = originList.length;
+  const REPORT   = 5;
 
-  for(let src=0; src<n; src++){
+  for(let oi=0; oi<total; oi++){
+    const src = originList[oi];
     const aD   = new Float32Array(n).fill(Infinity);
     const mD   = new Float32Array(n).fill(Infinity);
     const pred = new Int32Array(n).fill(-1);
@@ -1454,19 +1459,24 @@ function runSS(graph, n, metRadius) {
         if(na<aD[to]){aD[to]=na;mD[to]=nm;pred[to]=i;pq.push({i:to,a:na,m:nm});}
       }
     }
-    // Accumulate
+    // Integration: every origin contributes (exact)
     for(let dst=0;dst<n;dst++){
       if(dst===src||aD[dst]===Infinity)continue;
       totDepth[dst]+=aD[dst]; nodeCnt[dst]++;
-      let cur=pred[dst];
-      while(cur!==-1&&cur!==src){choice[cur]++;cur=pred[cur];}
     }
-    // Report progress every REPORT origins
-    if(src%REPORT===0){
+    // Choice/betweenness: only if this origin is in the choice set
+    if(!choiceSet || choiceSet[src]){
+      for(let dst=0;dst<n;dst++){
+        if(dst===src||aD[dst]===Infinity)continue;
+        let cur=pred[dst];
+        while(cur!==-1&&cur!==src){choice[cur]++;cur=pred[cur];}
+      }
+    }
+    if(oi%REPORT===0){
       const elapsed = Date.now() - startTime;
-      const rate = src > 0 ? elapsed/src : 0;
-      const remaining = rate > 0 ? Math.round((n-src)*rate/1000) : 0;
-      self.postMessage({type:'progress', src, n, remaining});
+      const rate = oi>0 ? elapsed/oi : 0;
+      const remaining = rate>0 ? Math.round((total-oi)*rate/1000) : 0;
+      self.postMessage({type:'progress', src:oi, n:total, remaining, workerId});
     }
   }
   return {
@@ -1477,10 +1487,10 @@ function runSS(graph, n, metRadius) {
 }
 
 self.onmessage = function(e){
-  const{graph, n, metRadius, runId} = e.data;
-  self.postMessage({type:'progress', src:0, n, remaining:0}); // signal started
-  const result = runSS(graph, n, metRadius);
-  self.postMessage({type:'done', result, runId});
+  const{graph, n, metRadius, originList, choiceSet, workerId} = e.data;
+  self.postMessage({type:'progress', src:0, n:originList.length, remaining:0, workerId});
+  const result = runSS(graph, n, metRadius, originList, choiceSet, workerId);
+  self.postMessage({type:'done', result, workerId});
 };
 `;
 
@@ -1490,50 +1500,113 @@ function makeSSWorker() {
   return new Worker(URL.createObjectURL(blob));
 }
 
-// Run one SS pass in a worker, return promise with progress updates
-function runSSInWorker(graph, n, metRadius, label, pctFrom, pctTo) {
+// Choose how many parallel workers to use
+function workerCount(){
+  const hw = navigator.hardwareConcurrency || 4;
+  return Math.max(1, Math.min(hw - 1, 8)); // leave one core for UI, cap at 8
+}
+
+// Decide which origins contribute to choice/betweenness (sampling for large nets)
+// Returns {choiceSet: Uint8Array|null, sampleInfo: string}
+function buildChoiceSet(n){
+  const EXACT_THRESHOLD = 800;   // below this, compute choice exactly
+  const SAMPLE_TARGET   = 500;   // above, sample ~this many origins
+  if(n <= EXACT_THRESHOLD){
+    return { choiceSet:null, sampleInfo:'exact' }; // null = all origins
+  }
+  // Spatially-even sample via stride
+  const set = new Uint8Array(n);
+  const stride = Math.max(1, Math.round(n / SAMPLE_TARGET));
+  let count=0;
+  for(let i=0;i<n;i+=stride){ set[i]=1; count++; }
+  return { choiceSet:set, sampleInfo:count+'/'+n+' sampled' };
+}
+
+// Run one SS pass split across multiple parallel workers
+function runSSInWorker(graph, n, metRadius, label, pctFrom, pctTo){
   return new Promise((resolve, reject) => {
-    const worker = makeSSWorker();
-    let lastProgress = Date.now();
-    // Timeout: if no progress message in 60s, something is wrong
-    const timeout = setInterval(() => {
-      const silent = (Date.now() - lastProgress) / 1000;
-      if(silent > 60) {
+    const nW = workerCount();
+    const { choiceSet, sampleInfo } = buildChoiceSet(n);
+    const phId = label.includes('R800')?'nain800':label.includes('R1200')?'nach1200':'r2500';
+
+    // Partition origins 0..n-1 round-robin across workers (even load)
+    const originLists = Array.from({length:nW}, ()=>[]);
+    for(let i=0;i<n;i++) originLists[i % nW].push(i);
+
+    // Accumulators
+    const totDepth = new Float64Array(n);
+    const nodeCnt  = new Float64Array(n);
+    const choice   = new Float64Array(n);
+
+    let done=0, failed=false;
+    const progressPerWorker = new Array(nW).fill(0);
+    const workers=[];
+    let lastProgress=Date.now();
+
+    const timeout=setInterval(()=>{
+      const silent=(Date.now()-lastProgress)/1000;
+      if(silent>90){
         clearInterval(timeout);
-        worker.terminate();
-        document.getElementById('prog-step').textContent = label + ' timed out after 60s — try smaller area';
+        workers.forEach(w=>w.terminate());
+        document.getElementById('prog-step').textContent=label+' timed out — try a smaller area';
         document.getElementById('prog-overlay').style.display='none';
         showToast('Analysis timed out — draw a smaller study area');
-        reject(new Error('Worker timeout'));
-      } else if(silent > 5) {
-        document.getElementById('prog-step').textContent = label + ' — computing... (' + Math.round(silent) + 's)';
+        if(!failed){ failed=true; reject(new Error('timeout')); }
+      } else if(silent>4){
+        document.getElementById('prog-step').textContent=
+          label+' — computing on '+nW+' cores... ('+Math.round(silent)+'s)';
       }
-    }, 2000);
-    worker.onmessage = function(e) {
-      lastProgress = Date.now();
-      const {type, src, result} = e.data;
-      if(type === 'progress') {
-        const pct = pctFrom + (pctTo - pctFrom) * (src / n);
-        const remStr = e.data.remaining > 0 ? '  (~'+e.data.remaining+'s left)' : '';
-        const phId = label.includes('R800')?'nain800':label.includes('R1200')?'nach1200':'r2500';
-        setP(pct, label + ' — ' + src + '/' + n + ' origins' + remStr, phId, src+'/'+n);
-      } else if(type === 'done') {
-        clearInterval(timeout);
-        worker.terminate();
-        resolve(e.data.result);
-      }
-    };
-    worker.onerror = function(err) {
-      clearInterval(timeout);
-      worker.terminate();
-      console.error('Worker error:', err);
-      document.getElementById('prog-step').textContent = 'Worker error: ' + (err.message||'unknown');
-      document.getElementById('prog-overlay').style.display='none';
-      showToast('Space Syntax worker failed — check console');
-      reject(err);
-    };
-    // Send graph as plain arrays (transferable-friendly)
-    worker.postMessage({graph, n, metRadius, runId: label});
+    },2000);
+
+    function cleanup(){ clearInterval(timeout); workers.forEach(w=>w.terminate()); }
+
+    for(let w=0; w<nW; w++){
+      const worker=makeSSWorker();
+      workers.push(worker);
+      worker.onmessage=function(e){
+        lastProgress=Date.now();
+        const {type, src, result, workerId}=e.data;
+        if(type==='progress'){
+          progressPerWorker[workerId]=src; // origins done in this worker
+          const totalDone=progressPerWorker.reduce((s,v)=>s+v,0);
+          const pct=pctFrom+(pctTo-pctFrom)*(totalDone/n);
+          const remStr=e.data.remaining>0?'  (~'+e.data.remaining+'s)':'';
+          setP(pct, label+' — '+totalDone+'/'+n+' origins · '+nW+' cores'+remStr, phId, totalDone+'/'+n);
+        } else if(type==='done'){
+          // Merge this worker's partial results
+          for(let i=0;i<n;i++){
+            totDepth[i]+=result.totDepth[i];
+            nodeCnt[i] +=result.nodeCnt[i];
+            choice[i]  +=result.choice[i];
+          }
+          done++;
+          if(done===nW && !failed){
+            cleanup();
+            // If we sampled choice, scale it up to estimate full betweenness
+            if(choiceSet){
+              let sampled=0; for(let i=0;i<n;i++) sampled+=choiceSet[i];
+              const scale = n / Math.max(1,sampled);
+              for(let i=0;i<n;i++) choice[i]*=scale;
+            }
+            console.log(label+' done — '+nW+' workers, choice: '+sampleInfo);
+            resolve({
+              totDepth:Array.from(totDepth),
+              nodeCnt: Array.from(nodeCnt),
+              choice:  Array.from(choice)
+            });
+          }
+        }
+      };
+      worker.onerror=function(err){
+        cleanup();
+        console.error('Worker error:',err);
+        document.getElementById('prog-step').textContent='Worker error: '+(err.message||'unknown');
+        document.getElementById('prog-overlay').style.display='none';
+        showToast('Space Syntax worker failed — check console');
+        if(!failed){ failed=true; reject(err); }
+      };
+      worker.postMessage({ graph, n, metRadius, originList:originLists[w], choiceSet, workerId:w });
+    }
   });
 }
 
