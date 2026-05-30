@@ -201,6 +201,12 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
 .phase-label.show{opacity:1}
 .phase-name{font-size:13px;font-weight:300;color:#e2ddd6;letter-spacing:-.01em}
 .phase-sub{font-size:10px;color:#555;font-family:monospace;margin-top:3px}
+.boundary-group{display:flex;flex-direction:column;gap:4px;margin-bottom:2px}
+.boundary-actions{display:flex;gap:4px}
+.bnd-act{height:22px;padding:0 8px;font-size:9px}
+.bnd-del:hover{border-color:#c84a4a!important;color:#c84a4a!important}
+.bnd-select{background:rgba(13,13,13,.92);border:1px solid #2a2a2a;border-radius:4px;color:#888;font-size:10px;font-family:inherit;height:26px;padding:0 6px;outline:none;cursor:pointer;width:100%}
+.bnd-select:focus{border-color:#c8a96e}
 .toast{position:absolute;bottom:20px;left:50%;transform:translateX(-50%);background:#1a1a1a;border:1px solid #2a2a2a;color:#c8a96e;padding:7px 14px;border-radius:4px;font-size:10px;font-family:monospace;z-index:2000;opacity:0;transition:opacity .3s;pointer-events:none;white-space:nowrap}
 .toast.show{opacity:1}
 </style>
@@ -323,9 +329,31 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
 <div id="map-panel">
   <div id="map"></div>
   <div class="map-controls">
-    <button class="map-btn study" id="study-btn" onclick="startDraw('study')">Draw Study Area</button>
-    <button class="map-btn ctx" id="ctx-btn" onclick="startDraw('ctx')" title="Auto-generated from study area. Draw manually to override.">Draw Global Context</button>
-    <button class="map-btn" id="clear-btn" onclick="clearBounds()" style="display:none">Clear Boundaries</button>
+    <!-- Study area controls -->
+    <div class="boundary-group" id="study-group">
+      <button class="map-btn study" id="study-btn" onclick="startDraw('study')">Draw Study Area</button>
+      <div class="boundary-actions" id="study-actions" style="display:none">
+        <button class="map-btn bnd-act" onclick="resetBoundary('study')" title="Reset study area">↺ Reset</button>
+        <button class="map-btn bnd-act" onclick="saveBoundary('study')" title="Save this boundary">Save</button>
+      </div>
+    </div>
+    <!-- Context controls -->
+    <div class="boundary-group" id="ctx-group">
+      <button class="map-btn ctx" id="ctx-btn" onclick="startDraw('ctx')">Draw Global Context</button>
+      <div class="boundary-actions" id="ctx-actions" style="display:none">
+        <button class="map-btn bnd-act" onclick="resetBoundary('ctx')" title="Reset context">↺ Reset</button>
+        <button class="map-btn bnd-act" onclick="autoGenerateContext()" title="Auto 800m buffer">Auto 800m</button>
+        <button class="map-btn bnd-act" onclick="saveBoundary('ctx')" title="Save this boundary">Save</button>
+      </div>
+    </div>
+    <!-- Saved boundaries -->
+    <div class="boundary-group" id="saved-bounds-group" style="display:none">
+      <select class="bnd-select" id="saved-bounds-select">
+        <option value="">— Saved boundaries —</option>
+      </select>
+      <button class="map-btn bnd-act" onclick="loadSavedBoundary()" title="Load selected boundary">Load</button>
+      <button class="map-btn bnd-act bnd-del" onclick="deleteSavedBoundary()" title="Delete">Del</button>
+    </div>
     <div class="basemap-switcher">
       <button class="basemap-btn active-base" data-bm="osm" onclick="switchBaseMap('osm')" title="OpenStreetMap">OSM</button>
       <button class="basemap-btn" data-bm="voyager" onclick="switchBaseMap('voyager')" title="Carto Voyager">Voyager</button>
@@ -577,321 +605,170 @@ function cancelDraw(){
   }
   drawMode=null;map.getContainer().style.cursor='';
 }
-function addEditNodes(type,pts){
-  const col=getCol(type);
-  editMarkers[type].forEach(m=>map.removeLayer(m));editMarkers[type]=[];
+function addEditNodes(type, pts){
+  // pts = [[lat,lon],...] in Leaflet format
+  const col = getCol(type);
+  editMarkers[type].forEach(m=>map.removeLayer(m)); editMarkers[type]=[];
   pts.forEach((pt,idx)=>{
-    const m=L.circleMarker([pt[0],pt[1]],{radius:6,fillColor:col,color:'#fff',weight:2,fillOpacity:.9,zIndexOffset:900}).addTo(map);
+    const m = L.circleMarker([pt[0],pt[1]],{
+      radius:6, fillColor:col, color:'#fff', weight:2, fillOpacity:.9, zIndexOffset:900
+    }).addTo(map);
     m.on('mousedown',e=>{
-      L.DomEvent.stopPropagation(e);map.dragging.disable();
+      L.DomEvent.stopPropagation(e); map.dragging.disable();
       map.on('mousemove',e2=>{
-        pts[idx]=[e2.latlng.lat,e2.latlng.lng];m.setLatLng(e2.latlng);
-        if(boundLayers[type])map.removeLayer(boundLayers[type]);
-        boundLayers[type]=L.polygon(pts,{color:col,weight:2,fillColor:col,fillOpacity:.06,dashArray:type==='study'?'6,3':'4,2'}).addTo(map);
-        bounds[type]=pts.map(p=>[p[1],p[0]]);
+        pts[idx] = [e2.latlng.lat, e2.latlng.lng]; // update in [lat,lon]
+        m.setLatLng(e2.latlng);
+        if(boundLayers[type]) map.removeLayer(boundLayers[type]);
+        boundLayers[type] = L.polygon(pts,{
+          color:col, weight:2, fillColor:col, fillOpacity:.06,
+          dashArray:type==='study'?'6,3':'4,2'
+        }).addTo(map);
+        bounds[type] = pts.map(p=>[p[1],p[0]]); // store as [lon,lat]
       });
       map.once('mouseup',()=>{
-        map.dragging.enable();map.off('mousemove');
-        if(type==='study') setTimeout(previewSegmentCount,200);
+        map.dragging.enable(); map.off('mousemove');
+        if(type==='study') setTimeout(previewSegmentCount, 200);
       });
     });
     editMarkers[type].push(m);
   });
 }
 function finishDraw(){
-  const type=drawMode,col=getCol(type);
+  const type=drawMode;
+  // Clean up drawing overlays — but DON'T touch the other boundary
   [drawLine,drawPoly,drawPreview].forEach(l=>{if(l)map.removeLayer(l);});
   drawLine=drawPoly=drawPreview=null;
   drawMarkers.forEach(m=>map.removeLayer(m));drawMarkers=[];
-  if(boundLayers[type])map.removeLayer(boundLayers[type]);
-  const savedPts=drawPts.map(p=>[p[0],p[1]]);
-  boundLayers[type]=L.polygon(savedPts,{color:col,weight:2,fillColor:col,fillOpacity:.06,dashArray:type==='study'?'6,3':'4,2'}).addTo(map);
-  bounds[type]=savedPts.map(p=>[p[1],p[0]]);
-  addEditNodes(type,savedPts);
-  cancelDraw();
-  document.getElementById('clear-btn').style.display='block';
-  document.getElementById('bl').style.display='block';
-  if(type==='study'){
-    showToast('Study area set — generating 800m context buffer...');
-    setTimeout(()=>{ autoGenerateContext(); previewSegmentCount(); }, 200);
-  } else {
-    showToast('Global context set — drag nodes to edit');
-  }
+  // Save drawn points as [lon,lat] and apply
+  const coordsLonLat = drawPts.map(p=>[p[1],p[0]]); // drawPts are [lat,lon]
+  cancelDraw(); // resets drawMode, cursor etc — does NOT touch boundaries
+  applyBoundary(type, coordsLonLat);
 }
-/* ── AUTO-GENERATE GLOBAL CONTEXT (800m buffer) ── */
+/* ════════════════════════════════════════════════
+   BOUNDARY SYSTEM
+   - Independent study + context boundaries
+   - Both editable simultaneously
+   - Individual reset per boundary
+   - Save/load named boundaries (localStorage)
+   - Auto 800m buffer from study area
+════════════════════════════════════════════════ */
+
+const BOUNDS_KEY = 'pwn_boundaries_v1';
+
+function getSavedBounds(){ try{ return JSON.parse(localStorage.getItem(BOUNDS_KEY)||'{}'); }catch(e){ return {}; } }
+function setSavedBounds(b){ localStorage.setItem(BOUNDS_KEY, JSON.stringify(b)); }
+
+function renderSavedBoundsList(){
+  const b = getSavedBounds();
+  const keys = Object.keys(b).sort();
+  const sel = document.getElementById('saved-bounds-select');
+  if(!sel) return;
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">— Saved boundaries —</option>';
+  keys.forEach(k=>{
+    const o = document.createElement('option');
+    o.value=k; o.textContent=k+' ('+b[k].type+')';
+    sel.appendChild(o);
+  });
+  if(cur && b[cur]) sel.value=cur;
+  document.getElementById('saved-bounds-group').style.display = keys.length ? 'block' : 'none';
+}
+
+function saveBoundary(type){
+  const pts = type==='study' ? bounds.study : bounds.ctx;
+  if(!pts || !pts.length){ showToast('No boundary to save'); return; }
+  const defaultName = (type==='study'?'Study':'Context')+' Area';
+  const name = prompt('Save boundary as:', defaultName);
+  if(!name||!name.trim()) return;
+  const b = getSavedBounds();
+  b[name.trim()] = { type, coords: pts, savedAt: new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'short'}) };
+  setSavedBounds(b);
+  renderSavedBoundsList();
+  showToast('"'+name.trim()+'" saved');
+}
+
+function loadSavedBoundary(){
+  const sel = document.getElementById('saved-bounds-select');
+  const name = sel.value;
+  if(!name){ showToast('Select a boundary to load'); return; }
+  const b = getSavedBounds();
+  const entry = b[name];
+  if(!entry){ showToast('Not found'); return; }
+  applyBoundary(entry.type, entry.coords);
+  showToast('"'+name+'" loaded as '+entry.type);
+}
+
+function deleteSavedBoundary(){
+  const sel = document.getElementById('saved-bounds-select');
+  const name = sel.value;
+  if(!name){ showToast('Select a boundary to delete'); return; }
+  if(!confirm('Delete "'+name+'"?')) return;
+  const b = getSavedBounds();
+  delete b[name];
+  setSavedBounds(b);
+  renderSavedBoundsList();
+  showToast('"'+name+'" deleted');
+}
+
+function applyBoundary(type, coordsLonLat){
+  // coordsLonLat = [[lon,lat],...] stored format
+  const col = getCol(type);
+  // Remove old
+  if(boundLayers[type]){ map.removeLayer(boundLayers[type]); boundLayers[type]=null; }
+  editMarkers[type].forEach(m=>map.removeLayer(m)); editMarkers[type]=[];
+  // Store
+  bounds[type] = coordsLonLat;
+  // Leaflet needs [lat,lon]
+  const leafletPts = coordsLonLat.map(c=>[c[1],c[0]]);
+  boundLayers[type] = L.polygon(leafletPts,{
+    color:col, weight:2, fillColor:col, fillOpacity:0.06,
+    dashArray: type==='study'?'6,3':'4,2'
+  }).addTo(map);
+  addEditNodes(type, leafletPts);
+  // Show UI
+  document.getElementById(type==='study'?'study-actions':'ctx-actions').style.display='flex';
+  document.getElementById('bl').style.display='block';
+  if(type==='study') setTimeout(()=>{ autoGenerateContext(); previewSegmentCount(); }, 200);
+}
+
+function resetBoundary(type){
+  if(!confirm('Reset '+(type==='study'?'study area':'global context')+'?')) return;
+  if(boundLayers[type]){ map.removeLayer(boundLayers[type]); boundLayers[type]=null; }
+  editMarkers[type].forEach(m=>map.removeLayer(m)); editMarkers[type]=[];
+  bounds[type]=null;
+  document.getElementById(type==='study'?'study-actions':'ctx-actions').style.display='none';
+  // Hide bl if both gone
+  if(!bounds.study && !bounds.ctx) document.getElementById('bl').style.display='none';
+  showToast((type==='study'?'Study area':'Global context')+' cleared');
+}
+
 function autoGenerateContext(){
   if(!bounds.study) return;
   try{
-    // Build study polygon from bounds.study (lon,lat pairs)
     const ring = [...bounds.study, bounds.study[0]];
     const studyPoly = turf.polygon([ring]);
-    // Buffer by 800m
     const buffered = turf.buffer(studyPoly, 0.8, {units:'kilometers'});
     if(!buffered||!buffered.geometry) return;
-    // Extract outer ring coordinates → [lon,lat] pairs
-    const bufCoords = buffered.geometry.coordinates[0];
-    // Simplify to ~20 points so the editable boundary isn't overwhelming
     const simplified = turf.simplify(buffered, {tolerance:0.0008, highQuality:true});
-    const simCoords = simplified.geometry.coordinates[0];
-    // Convert to [lat,lon] for Leaflet
-    const leafletPts = simCoords.map(c=>[c[1],c[0]]);
-    // Store as bounds.ctx in [lon,lat] format
-    bounds.ctx = simCoords.map(c=>[c[0],c[1]]);
-    // Remove old context layer
-    if(boundLayers.ctx){ map.removeLayer(boundLayers.ctx); boundLayers.ctx=null; }
-    editMarkers.ctx.forEach(m=>map.removeLayer(m)); editMarkers.ctx=[];
-    // Draw on map
-    const col = getCol('ctx');
-    boundLayers.ctx = L.polygon(leafletPts,{
-      color:col, weight:1.5, fillColor:col, fillOpacity:0.04, dashArray:'4,2'
-    }).addTo(map);
-    addEditNodes('ctx', leafletPts);
-    document.getElementById('clear-btn').style.display='block';
-    document.getElementById('bl').style.display='block';
-    showToast('Global context auto-set to 800m buffer — drag nodes to adjust');
-  } catch(e){
-    console.error('Auto-context failed:',e);
-    showToast('Could not auto-generate context — draw manually');
-  }
+    const simCoords = simplified.geometry.type==='Polygon'
+      ? simplified.geometry.coordinates[0]
+      : simplified.geometry.coordinates[0][0];
+    // Store as [lon,lat]
+    const coordsLonLat = simCoords.map(c=>[c[0],c[1]]);
+    applyBoundary('ctx', coordsLonLat);
+    showToast('Global context auto-set to 800m buffer');
+  } catch(e){ console.error('Auto-context failed:',e); showToast('Auto-context failed — draw manually'); }
 }
 
 function clearBounds(){
   ['study','ctx'].forEach(t=>{
-    if(boundLayers[t]){map.removeLayer(boundLayers[t]);boundLayers[t]=null;}
-    editMarkers[t].forEach(m=>map.removeLayer(m));editMarkers[t]=[];
+    if(boundLayers[t]){ map.removeLayer(boundLayers[t]); boundLayers[t]=null; }
+    editMarkers[t].forEach(m=>map.removeLayer(m)); editMarkers[t]=[];
     bounds[t]=null;
-    document.getElementById(t==='study'?'study-btn':'ctx-btn').textContent=t==='study'?'Draw Study Area':'Draw Global Context';
+    document.getElementById(t==='study'?'study-actions':'ctx-actions').style.display='none';
   });
   cancelDraw();
-  document.getElementById('clear-btn').style.display='none';
   document.getElementById('bl').style.display='none';
-}
-
-/* ════════════════════════════════════════════════
-   TABS / UI
-════════════════════════════════════════════════ */
-function switchTab(t){
-  ['data','weights','layers'].forEach(x=>document.getElementById('tab-'+x).style.display=x===t?'block':'none');
-  document.querySelectorAll('.tab').forEach((el,i)=>el.classList.toggle('active',['data','weights','layers'][i]===t));
-}
-function addCity(){
-  const inp=document.getElementById('city-input'),name=inp.value.trim();
-  if(!name){showToast('Enter a city name');return;}
-  if(cities.find(c=>c.name===name)){showToast('Already exists');return;}
-  cities.push({name,network:null});inp.value='';
-  renderCities();setActive(cities.length-1);
-}
-function setActive(i){
-  activeCity=i;renderCities();
-  const ok=activeCity!==null&&cities[activeCity];
-  document.getElementById('main-data').style.display=ok?'block':'none';
-  document.getElementById('no-city').style.display=ok?'none':'block';
-  renderAtts();renderAttLayers();
-}
-function removeCity(i,e){
-  e.stopPropagation();cities.splice(i,1);
-  activeCity=cities.length>0?Math.min(activeCity,cities.length-1):null;
-  renderCities();
-  if(activeCity!==null)setActive(activeCity);
-  else{document.getElementById('main-data').style.display='none';document.getElementById('no-city').style.display='block';}
-}
-function renderCities(){
-  document.getElementById('city-list').innerHTML=cities.map((c,i)=>`
-    <div class="city-chip ${i===activeCity?'active':''}" onclick="setActive(${i})">
-      <span style="font-size:10px;color:#484848">◎</span>
-      <span class="cname">${c.name}</span>
-      ${c.network?'<span style="font-size:9px;color:#4a8a2a;font-family:monospace">NET</span>':''}
-      <span class="crm" onclick="removeCity(${i},event)">×</span>
-    </div>`).join('');
-}
-function loadNetwork(input){
-  const file=input.files[0];if(!file)return;
-  parseFile(file,(err,gj,fname)=>{
-    if(err){showToast(err);return;}
-    cities[activeCity].network=gj;
-    const ct=gj.features?gj.features.length:0;
-    document.getElementById('net-zone').classList.add('loaded');
-    const t=document.getElementById('net-t');t.textContent='✓ '+ct+' features loaded';t.className='uz-t ok';
-    document.getElementById('net-s').textContent=fname;
-    if(netLayer)map.removeLayer(netLayer);
-    netLayer=L.geoJSON(gj,{style:{color:'#aaaaaa',weight:0.8,opacity:0.5}}).addTo(map);
-    try{map.fitBounds(netLayer.getBounds(),{padding:[30,30]});}catch(ex){}
-    renderCities();showToast('Network loaded — '+ct+' features');
-  });
-}
-
-/* ════════════════════════════════════════════════
-   ATTRACTOR MANAGEMENT
-════════════════════════════════════════════════ */
-function addAttType(){
-  const inp=document.getElementById('new-att'),name=inp.value.trim();
-  if(!name)return;
-  if(atts.find(a=>a.name.toLowerCase()===name.toLowerCase())){showToast('Already exists');return;}
-  atts.push({name,color:ATT_COLORS[atts.length%ATT_COLORS.length],data:null,count:0,mode:'corridor',accessLen:100,radius:300});
-  inp.value='';renderAtts();renderAttLayers();
-}
-function removeAtt(i){
-  if(attLayers[i]){map.removeLayer(attLayers[i]);delete attLayers[i];}
-  atts.splice(i,1);renderAtts();renderAttLayers();
-}
-function loadAttFile(i,input){
-  const file=input.files[0];if(!file)return;
-  parseFile(file,(err,gj,fname)=>{
-    if(err){showToast(err);return;}
-    atts[i].data=gj;atts[i].count=gj.features?gj.features.length:0;
-    if(attLayers[i])map.removeLayer(attLayers[i]);
-    attLayers[i]=L.geoJSON(gj,{
-      pointToLayer:(f,ll)=>L.circleMarker(ll,{radius:4,fillColor:atts[i].color,color:'#fff',weight:1.5,fillOpacity:.9}),
-      style:{color:atts[i].color,weight:2}
-    }).addTo(map);
-    attVis[i]=true;renderAtts();renderAttLayers();
-    showToast(atts[i].name+' loaded — '+atts[i].count+' features');
-  });
-}
-function toggleAttConfig(i){
-  const el=document.getElementById('att-cfg-'+i);
-  el.classList.toggle('open');
-}
-function renderAtts(){
-  document.getElementById('att-list').innerHTML=atts.map((a,i)=>`
-    <div class="att-item">
-      <div class="att-head" onclick="toggleAttConfig(${i})">
-        <div class="att-dot" style="background:${a.color}"></div>
-        <span class="att-name">${a.name}</span>
-        ${a.count?`<span class="att-count">${a.count}</span>`:''}
-        <div class="att-actions" onclick="event.stopPropagation()">
-          <input type="file" accept=".geojson,.json,.kml" id="att-file-${i}" style="display:none" onchange="loadAttFile(${i},this)"/>
-          <span class="att-ul" onclick="document.getElementById('att-file-${i}').click()">${a.data?'Replace':'Upload'}</span>
-          <span class="att-rm" onclick="removeAtt(${i})">×</span>
-        </div>
-      </div>
-      <div class="att-config" id="att-cfg-${i}">
-        <div class="att-cfg-row">
-          <span class="att-cfg-lbl">Mode</span>
-          <select class="mode-sel" id="att-mode-${i}" onchange="atts[${i}].mode=this.value">
-            <option value="direct"    ${a.mode==='direct'   ?'selected':''}>Direct Access only</option>
-            <option value="corridor"  ${a.mode==='corridor' ?'selected':''}>Approach Corridor</option>
-            <option value="catchment" ${a.mode==='catchment'?'selected':''}>Network Catchment</option>
-          </select>
-        </div>
-        <div class="att-cfg-row">
-          <span class="att-cfg-lbl">Access length (m)</span>
-          <input type="number" value="${a.accessLen}" min="20" max="300" step="10" id="att-al-${i}" style="width:64px" oninput="atts[${i}].accessLen=+this.value"/>
-          <span style="font-size:10px;color:#444">from nearest road</span>
-        </div>
-        <div class="att-cfg-row">
-          <span class="att-cfg-lbl">Influence radius (m)</span>
-          <input type="number" value="${a.radius}" min="50" max="1000" step="25" id="att-r-${i}" style="width:64px" oninput="atts[${i}].radius=+this.value"/>
-          <span style="font-size:10px;color:#444">network distance</span>
-        </div>
-      </div>
-    </div>`).join('');
-}
-function renderAttLayers(){
-  document.getElementById('att-layer-list').innerHTML=atts.map((a,i)=>a.data?`
-    <div class="tog-row ${attVis[i]!==false?'on':''}" id="tog-att-${i}" onclick="toggleAtt(${i})">
-      <div class="tog-sw" style="background:${a.color}"></div>
-      ${a.name} <span style="color:#383838;font-size:9px;margin-left:3px">(${a.count})</span>
-    </div>`:''
-  ).join('');
-}
-
-/* ════════════════════════════════════════════════
-   WEIGHTS UI
-════════════════════════════════════════════════ */
-function syncSSW(){
-  const keys=['conn','li8','gi','ch','gch'];
-  const vals=keys.map(k=>parseInt(document.getElementById('w-'+k).value));
-  const tot=vals.reduce((s,v)=>s+v,0);
-  keys.forEach((k,i)=>document.getElementById('wv-'+k).textContent=vals[i]+'%');
-  const tel=document.getElementById('ss-total');
-  tel.textContent='Total: '+tot+'%';tel.className='ss-total'+(tot!==100?' warn':'');
-}
-function syncFW(){const v=parseInt(document.getElementById('ssfw').value);document.getElementById('ssfw-v').textContent=v+'%';document.getElementById('proxw').value=100-v;document.getElementById('proxw-v').textContent=(100-v)+'%';}
-function syncFWB(){const v=parseInt(document.getElementById('proxw').value);document.getElementById('proxw-v').textContent=v+'%';document.getElementById('ssfw').value=100-v;document.getElementById('ssfw-v').textContent=(100-v)+'%';}
-
-/* ════════════════════════════════════════════════
-   LAYER TOGGLES
-════════════════════════════════════════════════ */
-function togglePWN(layer){
-  pwnVis[layer]=!pwnVis[layer];
-  document.getElementById('tog-'+layer).classList.toggle('on',pwnVis[layer]);
-  if(!segLayer)return;
-  segLayer.eachLayer(l=>{if(l._pwn===layer)l.setStyle({opacity:pwnVis[layer]?1:0,interactive:pwnVis[layer]});});
-}
-function toggleAtt(i){
-  attVis[i]=!attVis[i];
-  document.getElementById('tog-att-'+i).classList.toggle('on',attVis[i]);
-  if(attLayers[i]){attVis[i]?map.addLayer(attLayers[i]):map.removeLayer(attLayers[i]);}
-  if(segments.length>0)reGrade();
-}
-function toggleBase(){
-  baseVis=!baseVis;
-  document.getElementById('tog-base').classList.toggle('on',baseVis);
-  if(netLayer){baseVis?map.addLayer(netLayer):map.removeLayer(netLayer);}
-}
-
-/* ════════════════════════════════════════════════
-   PROGRESS
-════════════════════════════════════════════════ */
-// Phase state tracking
-const PHASES = ['seg','conn','nain800','nach1200','r2500','prox','grade','reveal'];
-let _currentPhase = null;
-let _analysisStart = null;
-
-function setPhase(phaseId, count){
-  // Mark previous as done
-  if(_currentPhase && _currentPhase !== phaseId){
-    const prev = document.getElementById('ph-'+_currentPhase+'-dot');
-    const prevN = document.getElementById('ph-'+_currentPhase+'-name');
-    if(prev){ prev.className='prog-phase-dot done'; }
-    if(prevN){ prevN.className='prog-phase-name done'; }
-  }
-  _currentPhase = phaseId;
-  const dot  = document.getElementById('ph-'+phaseId+'-dot');
-  const name = document.getElementById('ph-'+phaseId+'-name');
-  const cnt  = document.getElementById('ph-'+phaseId+'-count');
-  if(dot)  dot.className  = 'prog-phase-dot active';
-  if(name) name.className = 'prog-phase-name active';
-  if(cnt && count) cnt.textContent = count;
-  if(cnt) cnt.className = 'prog-phase-count active';
-}
-
-function setPhaseCount(phaseId, count){
-  const cnt = document.getElementById('ph-'+phaseId+'-count');
-  if(cnt) cnt.textContent = count;
-}
-
-function setP(pct, msg, phaseId, count){
-  document.getElementById('prog-fill').style.width = pct+'%';
-  document.getElementById('prog-step').textContent = msg;
-  document.getElementById('prog-pct').textContent  = Math.round(pct)+'%';
-  // Elapsed time
-  if(_analysisStart){
-    const elapsed = Math.round((Date.now()-_analysisStart)/1000);
-    document.getElementById('prog-time').textContent = elapsed+'s elapsed';
-  }
-  if(phaseId) setPhase(phaseId, count);
-}
-
-function startAnalysisClock(){
-  _analysisStart = Date.now();
-  _currentPhase  = null;
-  // Reset all phases to pending
-  PHASES.forEach(p=>{
-    const dot  = document.getElementById('ph-'+p+'-dot');
-    const name = document.getElementById('ph-'+p+'-name');
-    const cnt  = document.getElementById('ph-'+p+'-count');
-    if(dot)  dot.className  = 'prog-phase-dot pending';
-    if(name) name.className = 'prog-phase-name pending';
-    if(cnt)  cnt.textContent = '';
-    if(cnt)  cnt.className  = 'prog-phase-count';
-  });
-}
-function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
-function showToast(msg){
-  const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');
-  setTimeout(()=>t.classList.remove('show'),2800);
 }
 
 /* ════════════════════════════════════════════════
@@ -1940,7 +1817,7 @@ function loadSession(){
     }
   }
 
-  renderCities(); renderAtts(); renderAttLayers();
+  renderCities(); renderAtts(); renderAttLayers(); renderSavedBoundsList();
   showToast('Session "'+sname+'" loaded — ready to run analysis');
 }
 
@@ -1957,7 +1834,7 @@ function deleteSession(){
 }
 
 /* ── INIT ── */
-renderCities();renderAtts();renderAttLayers();
+renderCities();renderAtts();renderAttLayers();renderSavedBoundsList();
 renderSessionList();
 </script>
 </body>
