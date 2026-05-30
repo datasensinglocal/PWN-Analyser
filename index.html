@@ -367,6 +367,7 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
     <div class="leg-row" id="leg-pwn3"><div class="leg-line" style="background:#F5C518"></div>PWN 3 — Feeder</div>
     <div class="leg-row" id="leg-pwn4"><div class="leg-line" style="background:#1565C0"></div>PWN 4 — Enclave</div>
     <div class="leg-row conn-row" id="leg-conn" style="display:none"><div class="leg-line" style="background:#7aca7a;border-top:2px dashed #7aca7a;height:0"></div>Connector</div>
+    <div class="leg-row" id="leg-corridor" style="display:none"><div class="leg-line" style="background:#c8a96e;border-top:2px dashed #c8a96e;height:0"></div>Attractor corridor (out-of-area pull)</div>
   </div>
   <div class="bl" id="bl">
     <div class="bl-row"><div class="bl-line" style="background:#D0021B"></div>Study Area</div>
@@ -479,7 +480,7 @@ let bounds={study:null,ctx:null},boundLayers={study:null,ctx:null};
 let drawMode=null,drawPts=[],drawLine=null,drawPoly=null,drawMarkers=[],drawPreview=null;
 let pwnVis={pwn1:true,pwn2:true,pwn3:true,pwn4:true};
 let baseVis=true,connectorsOn=false;
-let segments=[],editMarkers={study:[],ctx:[]};
+let segments=[],allSegments=[],corridorLayer=null,corridorsOn=false,editMarkers={study:[],ctx:[]};
 
 /* ════════════════════════════════════════════════
    MAP INIT
@@ -818,7 +819,11 @@ function autoGenerateContext(){
   try{
     const ring = [...bounds.study, bounds.study[0]];
     const studyPoly = turf.polygon([ring]);
-    const buffered = turf.buffer(studyPoly, 1.25, {units:'kilometers'}); // 15-min walk radius (covers SS + attractors)
+    // Buffer must cover BOTH the 15-min SS radius (1.25km) and the largest
+    // attractor radius, so out-of-area destinations can pull core roads inward.
+    const maxAttR = Math.max(0, ...atts.filter(a=>a.data).map(a=>a.radius||0));
+    const bufKm = Math.max(1.25, maxAttR/1000);
+    const buffered = turf.buffer(studyPoly, bufKm, {units:'kilometers'});
     if(!buffered||!buffered.geometry) return;
     const simplified = turf.simplify(buffered, {tolerance:0.0008, highQuality:true});
     const simCoords = simplified.geometry.type==='Polygon'
@@ -827,7 +832,7 @@ function autoGenerateContext(){
     // Store as [lon,lat]
     const coordsLonLat = simCoords.map(c=>[c[0],c[1]]);
     applyBoundary('ctx', coordsLonLat);
-    showToast('Buffer auto-set to 1.25km (15-min walk catchment)');
+    showToast('Buffer auto-set to '+bufKm.toFixed(2)+'km (covers SS + attractor reach)');
   } catch(e){ console.error('Auto-context failed:',e); showToast('Auto-context failed — draw manually'); }
 }
 
@@ -1517,14 +1522,17 @@ function runSS(head, eTo, eAng, eMet, n, metRadius, originList, choiceSet, worke
   const mD   = new Float32Array(n);
   const pred = new Int32Array(n);
 
+  const settled = new Int32Array(n); // reusable: list of reached nodes
   for(let oi=0; oi<total; oi++){
     const src = originList[oi];
     aD.fill(Infinity); mD.fill(Infinity); pred.fill(-1);
     aD[src]=0; mD[src]=0;
+    let nSettled=0;
     const pq = new Heap(); pq.push({i:src,a:0,m:0});
     while(!pq.empty()){
       const{i,a,m}=pq.pop();
       if(a>aD[i])continue;
+      settled[nSettled++]=i;            // record reached node
       const start=head[i], end=head[i+1];
       for(let e=start;e<end;e++){
         const to=eTo[e];
@@ -1534,13 +1542,17 @@ function runSS(head, eTo, eAng, eMet, n, metRadius, originList, choiceSet, worke
         if(na<aD[to]){aD[to]=na;mD[to]=nm;pred[to]=i;pq.push({i:to,a:na,m:nm});}
       }
     }
-    for(let dst=0;dst<n;dst++){
-      if(dst===src||aD[dst]===Infinity)continue;
+    // Integration: only over nodes actually reached (within radius)
+    for(let k=0;k<nSettled;k++){
+      const dst=settled[k];
+      if(dst===src)continue;
       totDepth[dst]+=aD[dst]; nodeCnt[dst]++;
     }
+    // Choice: backtrack only over reached nodes
     if(!choiceSet || choiceSet[src]){
-      for(let dst=0;dst<n;dst++){
-        if(dst===src||aD[dst]===Infinity)continue;
+      for(let k=0;k<nSettled;k++){
+        const dst=settled[k];
+        if(dst===src)continue;
         let cur=pred[dst];
         while(cur!==-1&&cur!==src){choice[cur]++;cur=pred[cur];}
       }
@@ -2211,6 +2223,50 @@ function toggleBase(){
 
 /* ── Connectors toggle ── */
 /* ════════════════════════════════════════════════
+   ATTRACTOR CORRIDORS
+   Buffer roads that carry trip-attractor pull from
+   destinations OUTSIDE the study area, shown as faint
+   desire-lines indicating the direction a pedestrian
+   would walk to reach those out-of-area attractors.
+════════════════════════════════════════════════ */
+function buildCorridors(){
+  if(corridorLayer){ map.removeLayer(corridorLayer); corridorLayer=null; }
+  if(!allSegments.length) return;
+  // Buffer segments (not in study) that received meaningful attractor pull
+  const PULL_MIN = 0.05;
+  const corridorSegs = allSegments.filter(s=>
+    s._inStudy===false && s._pxRaw>PULL_MIN && s._pxDet && Object.keys(s._pxDet).length>0
+  );
+  if(!corridorSegs.length){ corridorsOn=false; return; }
+  // Colour each corridor segment by its dominant attractor type
+  const attColor = {};
+  atts.forEach(a=>{ attColor[a.name]=a.color; });
+  corridorLayer = L.geoJSON(turf.featureCollection(corridorSegs), {
+    style: f => {
+      const s = allSegments[f._id];
+      // dominant attractor = max contribution
+      let domName=null, domVal=0;
+      for(const [k,v] of Object.entries(s._pxDet||{})){ if(v>domVal){domVal=v;domName=k;} }
+      const col = attColor[domName] || '#c8a96e';
+      const w = 1 + Math.min(3, s._pxRaw*2);
+      return { color:col, weight:w, opacity:0.45, dashArray:'2,4' };
+    }
+  }).addTo(map);
+  corridorsOn=true;
+  document.getElementById('leg-corridor').style.display='flex';
+}
+
+function toggleCorridors(){
+  if(corridorsOn){
+    if(corridorLayer){ map.removeLayer(corridorLayer); corridorLayer=null; }
+    corridorsOn=false;
+    document.getElementById('leg-corridor').style.display='none';
+  } else {
+    buildCorridors();
+  }
+}
+
+/* ════════════════════════════════════════════════
    MAIN ANALYSIS
 ════════════════════════════════════════════════ */
 async function runAnalysis(){
@@ -2287,6 +2343,22 @@ async function runAnalysis(){
       if(corePoly){ try{ inside=turf.booleanPointInPolygon(turf.point(s._mid),corePoly); }catch(e){} }
       if(!inside){ s._inStudy=false; s._isBuffer=true; bufferSegs.push(s); }
     });
+    // Hard cap: if the buffer is huge (dense area + large radius), keep only the
+    // buffer segments NEAREST the core. The far buffer roads barely affect core
+    // SS scores (radius-limited) and only matter for attractor reach.
+    const BUFFER_CAP = 1500;
+    if(bufferSegs.length > BUFFER_CAP){
+      // Distance of each buffer seg midpoint to core centroid
+      let cx=0,cy=0; coreSegsAll.forEach(s=>{cx+=s._mid[0];cy+=s._mid[1];});
+      cx/=Math.max(1,coreSegsAll.length); cy/=Math.max(1,coreSegsAll.length);
+      bufferSegs.sort((a,b)=>{
+        const da=(a._mid[0]-cx)**2+(a._mid[1]-cy)**2;
+        const db=(b._mid[0]-cx)**2+(b._mid[1]-cy)**2;
+        return da-db;
+      });
+      bufferSegs = bufferSegs.slice(0, BUFFER_CAP);
+      console.log('Buffer capped to '+BUFFER_CAP+' nearest segments');
+    }
   }
 
   // Combine — reassign sequential ids across the merged set
@@ -2338,9 +2410,10 @@ async function runAnalysis(){
   // Grade — rank only the study-core segments (buffer excluded from percentiles)
   setP(92,'Grading PWN — 4 tiers...','grade');await sleep(20);
   grade(coreSegs,ssW,proxW,p1t,p2t,p3t,wN);
-  // Buffer segments get no grade (won't be displayed)
+  // Buffer segments get no grade (won't be displayed as PWN)
   allSegs.forEach(s=>{ if(!s._inStudy) s._pwn=null; });
   segments=coreSegs;
+  allSegments=allSegs;        // keep buffer segs for corridor display
   const sSegs=coreSegs; // alias for downstream code (stats, reveal)
 
   // Hide progress overlay — animated reveal takes over
@@ -2354,7 +2427,9 @@ async function runAnalysis(){
   updateStats(sSegs);
   document.getElementById('conn-btn').disabled=false;
   if(connectorsOn)buildConnectors(sSegs,sGraph);
-  showToast('Analysis complete — '+sSegs.length+' segments graded');
+  // Auto-draw attractor corridors (buffer roads carrying pull from out-of-area POIs)
+  buildCorridors();
+  showToast('Analysis complete — '+sSegs.length+' core segments graded');
 }
 
 /* ════════════════════════════════════════════════
