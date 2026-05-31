@@ -305,8 +305,8 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
     <!-- LAYERS TAB -->
     <div id="tab-layers" style="display:none">
       <div class="section">
-        <div class="sec-label">Score Layers — inspect the analysis</div>
-        <div style="font-size:9px;color:#888;margin:-2px 0 8px;line-height:1.4">Click a layer to recolour the map by that score. See the Space Syntax measures, the POI proximity, and how they build into the composite PWN.</div>
+        <div class="sec-label">Score Layers — click to inspect</div>
+        <div style="font-size:9px;color:#888;margin:-2px 0 8px;line-height:1.4">Click any layer below to recolour the map by that single score. Click again to return to the composite PWN. This lets you verify each input independently.</div>
         <div class="tog-row" id="sl-conn" onclick="showScoreLayer('conn')"><div class="tog-swatch" style="background:#0fb"></div>Connectivity</div>
         <div class="tog-row" id="sl-int" onclick="showScoreLayer('int')"><div class="tog-swatch" style="background:#0af"></div>15-min Integration</div>
         <div class="tog-row" id="sl-cho" onclick="showScoreLayer('cho')"><div class="tog-swatch" style="background:#08f"></div>15-min Choice</div>
@@ -2109,14 +2109,39 @@ function reGrade(){
    CLIP NETWORK
 ════════════════════════════════════════════════ */
 function clipNet(net,bCoords){
-  const ring=[...bCoords,bCoords[0]],poly=turf.polygon([ring]),out=[];
+  // Clip to the ACTUAL polygon, not its bounding box. bbox-clipping was leaving a
+  // rectangular fringe of roads outside the real boundary, which distorted edge scores.
+  const ring=[...bCoords,bCoords[0]], poly=turf.polygon([ring]);
+  const bb=turf.bbox(poly); // fast pre-filter rectangle
+  const [minX,minY,maxX,maxY]=bb;
+  const inBB=(x,y)=> x>=minX&&x<=maxX&&y>=minY&&y<=maxY;
+  const ptInPoly=(x,y)=>{ try{ return turf.booleanPointInPolygon(turf.point([x,y]),poly);}catch(e){return false;} };
+  const out=[];
   for(const f of(net.features||[])){
     try{
       if(!f.geometry)continue;
-      const lines=f.geometry.type==='MultiLineString'?f.geometry.coordinates.map(c=>turf.lineString(c)):f.geometry.type==='LineString'?[f]:[];
-      for(const ln of lines){
-        const cl=turf.bboxClip(ln,turf.bbox(poly));
-        if(cl&&cl.geometry&&cl.geometry.coordinates.length>=2)out.push(cl);
+      const lines=f.geometry.type==='MultiLineString'
+        ? f.geometry.coordinates
+        : f.geometry.type==='LineString'
+        ? [f.geometry.coordinates]
+        : [];
+      for(const coords of lines){
+        if(coords.length<2) continue;
+        // Quick reject: if no vertex is even in the bbox, skip
+        let anyInBB=false;
+        for(const c of coords){ if(inBB(c[0],c[1])){ anyInBB=true; break; } }
+        if(!anyInBB) continue;
+        // Keep the road if ANY vertex is truly inside the polygon, OR any sub-segment
+        // midpoint is inside (catches roads that cross a concave part of the boundary).
+        let keep=false;
+        for(const c of coords){ if(ptInPoly(c[0],c[1])){ keep=true; break; } }
+        if(!keep){
+          for(let i=0;i<coords.length-1;i++){
+            const mx=(coords[i][0]+coords[i+1][0])/2, my=(coords[i][1]+coords[i+1][1])/2;
+            if(ptInPoly(mx,my)){ keep=true; break; }
+          }
+        }
+        if(keep) out.push(turf.lineString(coords));
       }
     }catch(ex){}
   }
@@ -2287,7 +2312,8 @@ function restorePOIMarkers(){
 }
 
 function showScoreLayer(which){
-  if(!segments || !segments.length){ showToast('Run an analysis first'); return; }
+  if(typeof dbg==='function') dbg('Score layer clicked: '+which+' (segments: '+(segments?segments.length:0)+')','STAGE');
+  if(!segments || !segments.length){ showToast('Run an analysis first'); if(typeof dbg==='function') dbg('No segments — run analysis first','ERR'); return; }
 
   // Toggle off if clicking the active one → back to PWN grades
   if(activeScoreLayer === which){
