@@ -251,7 +251,10 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
           <input type="text" id="city-input" placeholder="City name..." style="flex:1"/>
           <button class="btn" onclick="addCity()">Add</button>
         </div>
-        <div id="city-list"></div>
+        <input type="file" id="folder-input" webkitdirectory directory multiple style="display:none" onchange="loadCityFolder(this)"/>
+        <button class="btn" style="width:100%;margin-top:6px;background:#1a1a1a;border:1px solid #3a3a3a;color:#c8a96e" onclick="document.getElementById('folder-input').click()">📁 Load City Folder</button>
+        <div style="font-size:9px;color:#666;margin-top:4px;line-height:1.4">Pick a folder named after the city. Inside: <b>network</b>.geojson/kml + one file per POI type (parks, schools, bus-stops…). Set each POI's reach after loading.</div>
+        <div id="city-list" style="margin-top:8px"></div>
       </div>
       <div id="main-data" style="display:none">
         <div class="section">
@@ -947,6 +950,90 @@ function clearBounds(){
 function switchTab(t){
   ['data','weights','layers'].forEach(x=>document.getElementById('tab-'+x).style.display=x===t?'block':'none');
   document.querySelectorAll('.tab').forEach((el,i)=>el.classList.toggle('active',['data','weights','layers'][i]===t));
+}
+
+// ════════════════════════════════════════════════
+//  LOAD CITY FOLDER — pick a folder; folder name =
+//  city; file named "network" = roads; every other
+//  geo file = a POI type named after the filename.
+//  Reach (access length / influence radius) is set
+//  per type in the UI after loading.
+// ════════════════════════════════════════════════
+const POI_PALETTE = ['#E87722','#2E8B57','#1E90FF','#9C27B0','#E91E63','#00BCD4','#FF9800','#795548','#607D8B','#F44336'];
+
+function prettyTypeName(fname){
+  return fname.replace(/\.[^.]+$/,'')      // drop extension
+              .replace(/[_-]+/g,' ')         // hyphens/underscores → spaces
+              .replace(/\b\w/g,c=>c.toUpperCase()) // title case
+              .trim();
+}
+
+function loadCityFolder(input){
+  const files = Array.from(input.files||[]);
+  if(!files.length){ showToast('No files in folder'); return; }
+
+  // City name from the folder (webkitRelativePath = "CityName/file.geojson")
+  const rel = files[0].webkitRelativePath || '';
+  const cityName = rel.split('/')[0] || 'Imported City';
+
+  // Keep only geo files
+  const geoFiles = files.filter(f=>/\.(geojson|json|kml)$/i.test(f.name));
+  if(!geoFiles.length){ showToast('No .geojson/.kml files found in folder'); return; }
+
+  // Identify the network file: name is exactly "network" (or "road"/"roads"/"road-network")
+  const isNetwork = f => /^(network|roads?|road[-_]?network)\.(geojson|json|kml)$/i.test(f.name);
+  const netFile = geoFiles.find(isNetwork);
+  if(!netFile){ showToast('No "network" file found. Name the road file network.geojson'); return; }
+  const poiFiles = geoFiles.filter(f=>f!==netFile);
+
+  // Create / select the city
+  let ci = cities.findIndex(c=>c.name===cityName);
+  if(ci<0){ cities.push({name:cityName, network:null}); ci=cities.length-1; }
+  renderCities(); setActive(ci);
+
+  dbg('Loading city folder: '+cityName+' — network + '+poiFiles.length+' POI files','STAGE');
+
+  // Reset attractor types — rebuild from the folder's POI files
+  atts = [];
+  attLayers = {}; attVis = {};
+
+  let pending = 1 + poiFiles.length;
+  const done = ()=>{ if(--pending<=0){
+    renderAtts(); renderAttLayers();
+    showToast('Loaded '+cityName+': network + '+poiFiles.length+' POI types. Set each POI\'s reach, then Run.');
+  }};
+
+  // Load network
+  parseFile(netFile,(err,gj)=>{
+    if(err){ showToast('Network: '+err); done(); return; }
+    cities[ci].network = gj;
+    const ct = gj.features?gj.features.length:0;
+    const nz=document.getElementById('net-zone'); if(nz) nz.classList.add('loaded');
+    const t=document.getElementById('net-t'); if(t){ t.textContent='✓ '+ct+' features loaded'; t.className='uz-t ok'; }
+    const ns=document.getElementById('net-s'); if(ns) ns.textContent=netFile.name;
+    if(netLayer)map.removeLayer(netLayer);
+    netLayer=L.geoJSON(gj,{style:{color:'#aaaaaa',weight:0.8,opacity:0.5}}).addTo(map);
+    try{map.fitBounds(netLayer.getBounds(),{padding:[30,30]});}catch(ex){}
+    renderCities();
+    dbg('Network loaded: '+ct+' features','OK');
+    done();
+  });
+
+  // Load each POI file as a new attractor type (default reach; user sets it after)
+  poiFiles.forEach((file,k)=>{
+    const name = prettyTypeName(file.name);
+    const color = POI_PALETTE[k % POI_PALETTE.length];
+    const idx = atts.length;
+    atts.push({ name, color, data:null, count:0, mode:'catchment', accessLen:100, radius:400, icon:'📍' });
+    parseFile(file,(err,gj)=>{
+      if(err){ showToast(name+': '+err); done(); return; }
+      atts[idx].data = gj;
+      atts[idx].count = gj.features?gj.features.length:0;
+      attVis[idx] = true;
+      dbg('POI "'+name+'" loaded: '+atts[idx].count+' features','OK');
+      done();
+    });
+  });
 }
 
 function addCity(){
