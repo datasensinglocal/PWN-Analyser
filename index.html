@@ -2501,6 +2501,18 @@ function showScoreLayer(which){
   const LY = layers[which];
   if(!LY) return;
 
+  // Compute the value range FIRST so heat layers can stretch to the fabric.
+  const vals = segments.map(s => s[LY.field]||0).filter(v=>!isNaN(v));
+  const mn = Math.min(...vals), mx = Math.max(...vals);
+  const mean = vals.reduce((a,b)=>a+b,0)/Math.max(1,vals.length);
+  // Heat layers (connectivity, integration, choice, SS composite) STRETCH across the
+  // fabric's own min→max, so the top-scoring street anchors at red and the range is fully
+  // used. This makes the colour relative to the analysed fabric. Proximity keeps its
+  // absolute black→green mapping; 'final' uses PWN tiers.
+  const stretch = (which==='conn'||which==='int'||which==='cho'||which==='ss');
+  const span = Math.max(1e-9, mx - mn);
+  const colourVal = v => stretch ? (v - mn)/span : v;
+
   // For 'final', just render the PWN grades (coloured by tier)
   if(which==='final'){
     renderSegs(segments);
@@ -2510,22 +2522,18 @@ function showScoreLayer(which){
     segLayer = L.geoJSON(turf.featureCollection(segments), {
       style: f => {
         // f IS the segment object (turf feature carries the score fields directly)
-        const v = (f[LY.field] != null ? f[LY.field] : 0);
+        const raw = (f[LY.field] != null ? f[LY.field] : 0);
+        const cv = colourVal(raw);
         drawn++;
-        return { color: LY.color(v), weight: 2.5 + v*5, opacity: 0.95 };
+        return { color: LY.color(cv), weight: 2.5 + cv*5, opacity: 0.95 };
       },
       onEachFeature: (feature, layer) => {
         layer.on('click', () => showInfo(feature));
       }
     }).addTo(map);
     if(segLayer.bringToFront) segLayer.bringToFront();
-    if(typeof dbg==='function') dbg('Score layer "'+which+'" drawn: '+drawn+' segments','OK');
+    if(typeof dbg==='function') dbg('Score layer "'+which+'" drawn: '+drawn+' segments'+(stretch?' (stretched to fabric)':''),'OK');
   }
-
-  // Stats summary
-  const vals = segments.map(s => s[LY.field]||0).filter(v=>!isNaN(v));
-  const mn = Math.min(...vals), mx = Math.max(...vals);
-  const mean = vals.reduce((a,b)=>a+b,0)/Math.max(1,vals.length);
   const box = document.getElementById('sl-stats');
   box.style.display='block';
   const scoredCount = vals.filter(v=>v>0).length;
