@@ -296,6 +296,17 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
     <!-- LAYERS TAB -->
     <div id="tab-layers" style="display:none">
       <div class="section">
+        <div class="sec-label">Score Layers — inspect the analysis</div>
+        <div style="font-size:9px;color:#888;margin:-2px 0 8px;line-height:1.4">Click a layer to recolour the map by that score. See the Space Syntax measures, the POI proximity, and how they build into the composite PWN.</div>
+        <div class="tog-row" id="sl-conn" onclick="showScoreLayer('conn')"><div class="tog-sw" style="background:#0fb"></div>Connectivity</div>
+        <div class="tog-row" id="sl-int" onclick="showScoreLayer('int')"><div class="tog-sw" style="background:#0af"></div>15-min Integration</div>
+        <div class="tog-row" id="sl-cho" onclick="showScoreLayer('cho')"><div class="tog-sw" style="background:#08f"></div>15-min Choice</div>
+        <div class="tog-row" id="sl-ss" onclick="showScoreLayer('ss')"><div class="tog-sw" style="background:#f40"></div>Space Syntax Composite</div>
+        <div class="tog-row" id="sl-px" onclick="showScoreLayer('px')"><div class="tog-sw" style="background:#c8a96e"></div>POI Proximity</div>
+        <div class="tog-row" id="sl-final" onclick="showScoreLayer('final')"><div class="tog-sw" style="background:linear-gradient(90deg,#D0021B,#E87722,#F5C518)"></div>Composite PWN (final grade)</div>
+        <div id="sl-stats" style="font-size:9px;color:#aaa;font-family:monospace;margin-top:8px;padding:6px 8px;background:#141414;border-radius:4px;display:none;line-height:1.6"></div>
+      </div>
+      <div class="section">
         <div class="sec-label">PWN Layers</div>
         <div class="tog-row on" id="tog-pwn1" onclick="togglePWN('pwn1')"><div class="tog-sw" style="background:#D0021B"></div>PWN 1 — Critical Backbone</div>
         <div class="tog-row on" id="tog-pwn2" onclick="togglePWN('pwn2')"><div class="tog-sw" style="background:#E87722"></div>PWN 2 — Secondary Corridor</div>
@@ -388,7 +399,7 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
     <div class="ir"><span class="il">Proximity score</span><span class="iv" id="iv-px">—</span></div>
     <div id="iv-px-det"></div>
   </div>
-  <div id="debug-panel" style="position:absolute;bottom:14px;right:14px;width:380px;max-height:50vh;background:rgba(8,8,8,.96);border:1px solid #c8a96e;border-radius:8px;z-index:1200;display:none;flex-direction:column;font-family:monospace;font-size:10px;color:#cfcfcf;box-shadow:0 4px 24px rgba(0,0,0,.6)">
+  <div id="debug-panel" style="position:absolute;bottom:14px;right:14px;width:420px;max-height:60vh;background:rgba(8,8,8,.98);border:2px solid #c8a96e;border-radius:8px;z-index:2001;display:none;flex-direction:column;font-family:monospace;font-size:10px;color:#cfcfcf;box-shadow:0 4px 24px rgba(0,0,0,.6)">
     <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 10px;border-bottom:1px solid #333;flex-shrink:0">
       <span style="color:#c8a96e;font-weight:700;letter-spacing:.05em">DEBUG LOG</span>
       <div style="display:flex;gap:6px">
@@ -399,7 +410,7 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
     </div>
     <div id="debug-body" style="overflow-y:auto;padding:8px 10px;white-space:pre-wrap;line-height:1.5;flex:1"></div>
   </div>
-  <button id="debug-toggle" onclick="toggleDebug()" style="position:absolute;bottom:14px;right:14px;z-index:1199;background:rgba(8,8,8,.9);color:#c8a96e;border:1px solid #c8a96e;border-radius:6px;padding:6px 12px;font-family:monospace;font-size:10px;font-weight:700;cursor:pointer;letter-spacing:.05em">⚉ DEBUG</button>
+  <button id="debug-toggle" onclick="toggleDebug()" style="position:absolute;bottom:80px;right:14px;z-index:2000;background:#c8a96e;color:#0d0d0d;border:2px solid #fff;border-radius:6px;padding:10px 16px;font-family:monospace;font-size:13px;font-weight:700;cursor:pointer;letter-spacing:.05em;box-shadow:0 2px 16px rgba(0,0,0,.6)">⚉ DEBUG LOG</button>
   <div class="prog-overlay" id="prog-overlay">
     <div class="prog-box">
       <div class="prog-title">Running Analysis</div>
@@ -2070,6 +2081,73 @@ function proxColor(val) {
   return `rgb(${r},${g},${b})`;
 }
 
+// ════════════════════════════════════════════════
+//  SCORE LAYER VIEWER — recolour map by a single
+//  analysis layer so the build-up is inspectable.
+// ════════════════════════════════════════════════
+let activeScoreLayer = null;
+
+function showScoreLayer(which){
+  if(!segments || !segments.length){ showToast('Run an analysis first'); return; }
+
+  // Toggle off if clicking the active one → back to PWN grades
+  if(activeScoreLayer === which){
+    activeScoreLayer = null;
+    document.querySelectorAll('[id^="sl-"]').forEach(el=>el.classList.remove('on'));
+    document.getElementById('sl-stats').style.display='none';
+    renderSegs(segments); // back to final PWN
+    showToast('Showing composite PWN grades');
+    return;
+  }
+
+  activeScoreLayer = which;
+  document.querySelectorAll('.tog-row[id^="sl-"]').forEach(el=>el.classList.remove('on'));
+  const btn=document.getElementById('sl-'+which); if(btn) btn.classList.add('on');
+
+  // Map each layer to its score field + colouring
+  const layers = {
+    conn:  { field:'_coN',  color:heatColor, label:'Connectivity', desc:'Direct junction connections (normalised)' },
+    int:   { field:'_li8',  color:heatColor, label:'15-min Integration', desc:'Spatial centrality within a 15-min walk' },
+    cho:   { field:'_ch',   color:heatColor, label:'15-min Choice', desc:'Through-movement within a 15-min walk' },
+    ss:    { field:'_ss',   color:heatColor, label:'Space Syntax Composite', desc:'Weighted blend of connectivity + integration + choice' },
+    px:    { field:'_px',   color:proxColor, label:'POI Proximity', desc:'Combined destination pull from all attractors' },
+    final: { field:'_final',color:null,      label:'Composite PWN', desc:'Final blended score → PWN tiers' }
+  };
+  const L = layers[which];
+  if(!L) return;
+
+  // For 'final', just render the PWN grades (coloured by tier)
+  if(which==='final'){
+    renderSegs(segments);
+  } else {
+    if(segLayer){ map.removeLayer(segLayer); segLayer=null; }
+    segLayer = L.geoJSON(turf.featureCollection(segments), {
+      style: f => {
+        const s = segments[f._id];
+        const v = s[L.field] || 0;
+        return { color: L.color(v), weight: 1.5 + v*4, opacity: 0.9 };
+      },
+      onEachFeature: (feature, layer) => {
+        const s = segments[feature._id]; if(!s) return;
+        layer.on('click', () => showInfo(s));
+      }
+    }).addTo(map);
+  }
+
+  // Stats summary
+  const vals = segments.map(s => s[L.field]||0).filter(v=>!isNaN(v));
+  const mn = Math.min(...vals), mx = Math.max(...vals);
+  const mean = vals.reduce((a,b)=>a+b,0)/Math.max(1,vals.length);
+  const box = document.getElementById('sl-stats');
+  box.style.display='block';
+  box.innerHTML =
+    '<div style="color:#c8a96e;font-weight:700;margin-bottom:3px">'+L.label+'</div>'+
+    '<div style="color:#888;margin-bottom:4px">'+L.desc+'</div>'+
+    (which==='final' ? 'Coloured by PWN tier' :
+      'min '+mn.toFixed(3)+'  ·  mean '+mean.toFixed(3)+'  ·  max '+mx.toFixed(3));
+  showToast('Showing: '+L.label);
+}
+
 async function runAnimatedReveal(segs, sGraph, attConfigs, ssW, proxW, p1t, p2t, p3t, wN) {
   const HOLD = 1200; // ms to hold each phase
   const n = segs.length;
@@ -2353,6 +2431,9 @@ async function runAnalysis(){
   }
 
   clearAreaWarning();
+  // auto-open debug panel so the log is visible during the run
+  document.getElementById('debug-panel').style.display='flex';
+  document.getElementById('debug-toggle').style.display='none';
   dbg('━━━ ANALYSIS START ━━━','STAGE');
   document.getElementById('prog-overlay').style.display='flex';
   startAnalysisClock();
