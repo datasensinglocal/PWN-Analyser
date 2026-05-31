@@ -2335,12 +2335,9 @@ function heatColor(val) {
 // POI proximity colour: grey (none) → warm gold → orange (high)
 function proxColor(val) {
   const v = Math.max(0, Math.min(1, val));
-  if(v < 0.01) return '#2a2a2a';
-  // Dark → bright green: low proximity = dim green, high = vivid green
-  const r = Math.round(30 + v*40);    // stays low (keeps it green, not yellow)
-  const g = Math.round(70 + v*150);   // ramps up strongly → bright green at high
-  const b = Math.round(30 + v*30);
-  return `rgb(${r},${g},${b})`;
+  // Single linear gradient: black (low) → bright green (high)
+  const g = Math.round(v*230);
+  return `rgb(0,${g},0)`;
 }
 
 // ════════════════════════════════════════════════
@@ -2543,7 +2540,7 @@ function showScoreLayer(which){
     setLegendMode('final');
   }else{
     const grad = (which==='px')
-      ? 'linear-gradient(90deg,#2a2a2a,#2e5a2e,#3a8a3a,#46c846,#5cff5c)'   // proximity: dark→green
+      ? 'linear-gradient(90deg,#000000,#00e600)'                           // proximity: black→green
       : 'linear-gradient(90deg,#0040ff,#00b4c8,#64ff00,#ffc800,#ff0000)';  // SS: blue→red
     setLegendMode(which, LY.label, grad, 'min '+mn.toFixed(2)+' · mean '+mean.toFixed(2)+' · max '+mx.toFixed(2));
   }
