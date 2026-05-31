@@ -1624,140 +1624,83 @@ function buildChoiceSet(n){
 }
 
 // Run one SS pass split across multiple parallel workers
-function runSSInWorker(graph, n, metRadius, label, pctFrom, pctTo, originIndices){
-  return new Promise((resolve, reject) => {
-    // Origins to compute from. Defaults to all n if not given.
-    const origins = originIndices && originIndices.length ? originIndices : Array.from({length:n},(_,i)=>i);
-    const nOrigins = origins.length;
-    const nW = Math.min(workerCount(), Math.max(1, nOrigins)); // don't spawn more workers than origins
-    const { choiceSet, sampleInfo } = buildChoiceSet(nOrigins);
-    const phId = label.includes('15min')?'nain800':'r2500';
+// Heap for main-thread Dijkstra (mirrors the worker's)
+function MHeap(){this.h=[];}
+MHeap.prototype.push=function(nd){this.h.push(nd);let i=this.h.length-1;while(i>0){const p=(i-1)>>1;if(this.h[p].a<=this.h[i].a)break;const t=this.h[p];this.h[p]=this.h[i];this.h[i]=t;i=p;}};
+MHeap.prototype.pop=function(){const top=this.h[0],last=this.h.pop();if(this.h.length){this.h[0]=last;let i=0;while(true){let s=i,l=2*i+1,r=2*i+2;if(l<this.h.length&&this.h[l].a<this.h[s].a)s=l;if(r<this.h.length&&this.h[r].a<this.h[s].a)s=r;if(s===i)break;const t=this.h[s];this.h[s]=this.h[i];this.h[i]=t;i=s;}}return top;};
+MHeap.prototype.empty=function(){return!this.h.length;};
 
-    // Partition the ORIGIN list round-robin across workers (even load)
-    const originLists = Array.from({length:nW}, ()=>[]);
-    origins.forEach((origIdx, k)=>{ originLists[k % nW].push(origIdx); });
+// Space Syntax on the MAIN THREAD, chunked with yields so the UI stays responsive.
+// The whole computation is ~1s; workers were unnecessary and unreliable.
+async function runSSInWorker(graph, n, metRadius, label, pctFrom, pctTo, originIndices){
+  const origins = originIndices && originIndices.length ? originIndices : Array.from({length:n},(_,i)=>i);
+  const nOrigins = origins.length;
+  const phId = label.includes('15min')?'nain800':'r2500';
 
-    // Accumulators
-    const totDepth = new Float64Array(n);
-    const nodeCnt  = new Float64Array(n);
-    const choice   = new Float64Array(n);
+  // Build CSR flat arrays
+  let edgeTotal=0; for(let i=0;i<n;i++) edgeTotal+=graph[i].length;
+  const head=new Int32Array(n+1), eTo=new Int32Array(edgeTotal),
+        eAng=new Float32Array(edgeTotal), eMet=new Float32Array(edgeTotal);
+  let ei=0;
+  for(let i=0;i<n;i++){ head[i]=ei; const ed=graph[i]; for(let k=0;k<ed.length;k++){ eTo[ei]=ed[k].to; eAng[ei]=ed[k].ang; eMet[ei]=ed[k].met; ei++; } }
+  head[n]=ei;
 
-    // Rebuild choiceSet keyed by SEGMENT index (worker checks choiceSet[src])
-    // Sample among origins for betweenness if there are many.
-    let segChoiceSet = null;
-    if(nOrigins > 800){
-      segChoiceSet = new Uint8Array(n);
-      const stride = Math.max(1, Math.round(nOrigins/500));
-      origins.forEach((segIdx,k)=>{ if(k%stride===0) segChoiceSet[segIdx]=1; });
-    }
-    let done=0, failed=false;
-    const progressPerWorker = new Array(nW).fill(0);
-    const workers=[];
-    let lastProgress=Date.now();
+  // Sampled betweenness for large origin sets
+  let segChoiceSet=null;
+  if(nOrigins>800){
+    segChoiceSet=new Uint8Array(n);
+    const stride=Math.max(1,Math.round(nOrigins/500));
+    origins.forEach((segIdx,k)=>{ if(k%stride===0) segChoiceSet[segIdx]=1; });
+  }
 
-    const timeout=setInterval(()=>{
-      const silent=(Date.now()-lastProgress)/1000;
-      if(silent>45){
-        clearInterval(timeout);
-        workers.forEach(w=>w.terminate());
-        document.getElementById('prog-step').textContent=label+' timed out — try a smaller area';
-        document.getElementById('prog-overlay').style.display='none';
-        showToast('Analysis timed out — draw a smaller study area');
-        if(!failed){ failed=true; reject(new Error('timeout')); }
-      } else if(silent>4){
-        document.getElementById('prog-step').textContent=
-          label+' — computing on '+nW+' cores... ('+Math.round(silent)+'s)';
-      }
-    },2000);
+  const totDepth=new Float64Array(n), nodeCnt=new Float64Array(n), choice=new Float64Array(n);
+  const aD=new Float32Array(n), pred=new Int32Array(n), reached=new Uint8Array(n), settled=new Int32Array(n);
 
-    function cleanup(){ clearInterval(timeout); workers.forEach(w=>w.terminate()); }
+  const CHUNK=25;        // origins per chunk before yielding to UI
+  const t0=Date.now();
 
-    // Build CSR (compressed sparse row) flat arrays ONCE — shared by all workers
-    let edgeTotal=0;
-    for(let i=0;i<n;i++) edgeTotal += graph[i].length;
-    const head = new Int32Array(n+1);
-    const eTo  = new Int32Array(edgeTotal);
-    const eAng = new Float32Array(edgeTotal);
-    const eMet = new Float32Array(edgeTotal);
-    let ei=0;
-    for(let i=0;i<n;i++){
-      head[i]=ei;
-      const edges=graph[i];
-      for(let k=0;k<edges.length;k++){
-        eTo[ei]=edges[k].to; eAng[ei]=edges[k].ang; eMet[ei]=edges[k].met; ei++;
+  for(let oi=0; oi<nOrigins; oi++){
+    const src=origins[oi];
+    aD.fill(Infinity); pred.fill(-1);
+    aD[src]=0; let nSettled=0;
+    const pq=new MHeap(); pq.push({i:src,a:0,m:0});
+    while(!pq.empty()){
+      const{i,a,m}=pq.pop();
+      if(a>aD[i])continue;
+      if(!reached[i]){ reached[i]=1; settled[nSettled++]=i; }
+      const st=head[i], en=head[i+1];
+      for(let e=st;e<en;e++){
+        const to=eTo[e]; const nm=m+eMet[e];
+        if(metRadius!==Infinity && nm>metRadius)continue;
+        const na=a+eAng[e];
+        if(na<aD[to]){ aD[to]=na; pred[to]=i; pq.push({i:to,a:na,m:nm}); }
       }
     }
-    head[n]=ei;
-
-    for(let w=0; w<nW; w++){
-      const worker=makeSSWorker();
-      workers.push(worker);
-      worker.onmessage=function(e){
-        lastProgress=Date.now();
-        const {type, src, result, workerId}=e.data;
-        if(type==='diag'){
-          console.log('First origin: '+e.data.nSettled+' nodes explored in '+e.data.ms+'ms');
-          return;
-        }
-        if(type==='progress'){
-          progressPerWorker[workerId]=src;
-          const totalDone=progressPerWorker.reduce((s,v)=>s+v,0);
-          const pct=pctFrom+(pctTo-pctFrom)*(totalDone/nOrigins);
-          const remStr=e.data.remaining>0?'  (~'+e.data.remaining+'s)':'';
-          setP(pct, label+' — '+totalDone+'/'+nOrigins+' origins · '+nW+' cores'+remStr, phId, totalDone+'/'+nOrigins);
-        } else if(type==='error'){
-          cleanup();
-          console.error('Worker '+workerId+' error:', e.data.message);
-          document.getElementById('prog-step').textContent='Worker error: '+e.data.message;
-          document.getElementById('prog-overlay').style.display='none';
-          showToast('SS worker error: '+e.data.message);
-          if(!failed){ failed=true; reject(new Error(e.data.message)); }
-        } else if(type==='done'){
-          console.log('Received done from worker '+workerId);
-          try {
-            for(let i=0;i<n;i++){
-              totDepth[i]+=result.totDepth[i];
-              nodeCnt[i] +=result.nodeCnt[i];
-              choice[i]  +=result.choice[i];
-            }
-          } catch(mergeErr){
-            cleanup();
-            console.error('Merge error:', mergeErr, 'result=', result);
-            if(!failed){ failed=true; reject(mergeErr); }
-            return;
-          }
-          done++;
-          if(done===nW && !failed){
-            cleanup();
-            if(segChoiceSet){
-              let sampled=0; for(let i=0;i<n;i++) sampled+=segChoiceSet[i];
-              const scale = nOrigins / Math.max(1,sampled);
-              for(let i=0;i<n;i++) choice[i]*=scale;
-            }
-            console.log(label+' done — '+nW+' workers, '+nOrigins+' origins');
-            resolve({
-              totDepth:Array.from(totDepth),
-              nodeCnt: Array.from(nodeCnt),
-              choice:  Array.from(choice)
-            });
-          }
-        }
-      };
-      worker.onerror=function(err){
-        cleanup();
-        console.error('Worker error:',err);
-        document.getElementById('prog-step').textContent='Worker error: '+(err.message||'unknown');
-        document.getElementById('prog-overlay').style.display='none';
-        showToast('Space Syntax worker failed — check console');
-        if(!failed){ failed=true; reject(err); }
-      };
-      // Copy CSR arrays per worker (cloned via structured clone — fast for typed arrays)
-      worker.postMessage({
-        head, eTo, eAng, eMet, n, metRadius,
-        originList:originLists[w], choiceSet:segChoiceSet, workerId:w
-      });
+    for(let k=0;k<nSettled;k++){ const dst=settled[k]; if(dst!==src){ totDepth[dst]+=aD[dst]; nodeCnt[dst]++; } }
+    if(!segChoiceSet || segChoiceSet[src]){
+      for(let k=0;k<nSettled;k++){ const dst=settled[k]; if(dst===src)continue; let cur=pred[dst]; while(cur!==-1&&cur!==src){ choice[cur]++; cur=pred[cur]; } }
     }
-  });
+    for(let k=0;k<nSettled;k++) reached[settled[k]]=0;
+
+    // Yield to UI every CHUNK origins
+    if(oi%CHUNK===0){
+      const elapsed=Date.now()-t0;
+      const rate=oi>0?elapsed/oi:0;
+      const rem=rate>0?Math.round((nOrigins-oi)*rate/1000):0;
+      const pct=pctFrom+(pctTo-pctFrom)*(oi/nOrigins);
+      setP(pct, label+' — '+oi+'/'+nOrigins+' origins'+(rem>0?' (~'+rem+'s)':''), phId, oi+'/'+nOrigins);
+      await new Promise(r=>setTimeout(r,0)); // let the browser repaint
+    }
+  }
+
+  // Scale sampled choice up to full estimate
+  if(segChoiceSet){
+    let sampled=0; for(let i=0;i<n;i++) sampled+=segChoiceSet[i];
+    const scale=nOrigins/Math.max(1,sampled);
+    for(let i=0;i<n;i++) choice[i]*=scale;
+  }
+  console.log(label+' done (main thread) — '+nOrigins+' origins in '+(Date.now()-t0)+'ms');
+  return { totDepth:Array.from(totDepth), nodeCnt:Array.from(nodeCnt), choice:Array.from(choice) };
 }
 
 async function computeSS(sSegs, cSegs, sGraph, cGraph, pctStart, pctEnd) {
