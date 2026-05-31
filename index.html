@@ -424,7 +424,7 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
     </div>
     <div id="debug-body" style="overflow-y:auto;padding:8px 10px;white-space:pre-wrap;line-height:1.5;flex:1"></div>
   </div>
-  <button id="debug-toggle" onclick="toggleDebug()" style="position:absolute;bottom:80px;right:14px;z-index:2000;background:#c8a96e;color:#0d0d0d;border:2px solid #fff;border-radius:6px;padding:10px 16px;font-family:monospace;font-size:13px;font-weight:700;cursor:pointer;letter-spacing:.05em;box-shadow:0 2px 16px rgba(0,0,0,.6)">⚉ DEBUG LOG</button>
+  <button id="debug-toggle" onclick="toggleDebug()" style="position:absolute;bottom:95px;left:10px;z-index:2000;background:#c8a96e;color:#0d0d0d;border:2px solid #fff;border-radius:6px;padding:10px 16px;font-family:monospace;font-size:13px;font-weight:700;cursor:pointer;letter-spacing:.05em;box-shadow:0 2px 16px rgba(0,0,0,.6)">⚉ DEBUG LOG</button>
   <div class="prog-overlay" id="prog-overlay">
     <div class="prog-box">
       <div class="prog-title">Running Analysis</div>
@@ -920,6 +920,7 @@ function autoGenerateContext(){
     const bufKm = Math.max(1.25, maxAttR/1000);
     const buffered = turf.buffer(studyPoly, bufKm, {units:'kilometers'});
     if(!buffered||!buffered.geometry) return;
+    window._bufferPolygon = buffered; // store for POI filtering after analysis
     const simplified = turf.simplify(buffered, {tolerance:0.0008, highQuality:true});
     const simCoords = simplified.geometry.type==='Polygon'
       ? simplified.geometry.coordinates[0]
@@ -1000,6 +1001,8 @@ function loadCityFolder(input){
   let pending = 1 + poiFiles.length;
   const done = ()=>{ if(--pending<=0){
     renderAtts(); renderAttLayers();
+    buildPOIMarkers();        // show pins so user can see what loaded
+    renderPOIToggleList();
     showToast('Loaded '+cityName+': network + '+poiFiles.length+' POI types. Set each POI\'s reach, then Run.');
   }};
 
@@ -1114,6 +1117,7 @@ function loadAttFile(i,input){
       style:{color:atts[i].color,weight:2}
     }).addTo(map);
     attVis[i]=true;renderAtts();renderAttLayers();
+    buildPOIMarkers(); renderPOIToggleList();  // show pins on upload
     showToast(atts[i].name+' loaded — '+atts[i].count+' features');
   });
 }
@@ -2184,30 +2188,45 @@ function proxColor(val) {
 //  independent of the analysis. Uses emoji placeholders
 //  (swap for custom icons later via the `icon` field).
 // ════════════════════════════════════════════════
-function buildPOIMarkers(){
+function buildPOIMarkers(filterToBuffer){
   // Clear existing
   Object.values(poiMarkerLayers).forEach(L=>{ if(L) map.removeLayer(L); });
   poiMarkerLayers={};
+  // If filtering to buffer, prepare the polygon for point-in-polygon tests
+  const bufPoly = (filterToBuffer && window._bufferPolygon) ? window._bufferPolygon : null;
+  const inBuffer = (f)=>{
+    if(!bufPoly) return true;
+    try{
+      let pt = f;
+      if(f.geometry && f.geometry.type!=='Point'){
+        pt = turf.centroid(f);
+      }
+      return turf.booleanPointInPolygon(pt, bufPoly);
+    }catch(e){ return true; }
+  };
   atts.forEach((a,i)=>{
     if(!a.data || !a.data.features) return;
+    // Filter features to buffer zone if requested
+    const feats = bufPoly ? a.data.features.filter(inBuffer) : a.data.features;
+    const dataToShow = { type:'FeatureCollection', features:feats };
     const col = a.color || '#c8a96e';
     // Clean Google-Maps-style teardrop pin (small, simple, recognisable)
     const pinSVG =
-      '<svg width="20" height="28" viewBox="0 0 20 28" xmlns="http://www.w3.org/2000/svg">'+
+      '<svg width="15" height="21" viewBox="0 0 20 28" xmlns="http://www.w3.org/2000/svg">'+
       '<path d="M10 0C4.5 0 0 4.5 0 10c0 7 10 18 10 18s10-11 10-18C20 4.5 15.5 0 10 0z" '+
       'fill="'+col+'" stroke="#fff" stroke-width="1.5"/>'+
       '<circle cx="10" cy="10" r="3.5" fill="#fff"/></svg>';
-    const layer = L.geoJSON(a.data, {
+    const layer = L.geoJSON(dataToShow, {
       pointToLayer:(f,ll)=>L.marker(ll,{
         icon: L.divIcon({
           className:'poi-pin',
           html:'<div style="filter:drop-shadow(0 1px 1.5px rgba(0,0,0,.4))">'+pinSVG+'</div>',
-          iconSize:[20,28], iconAnchor:[10,28], popupAnchor:[0,-26]
+          iconSize:[15,21], iconAnchor:[7.5,21], popupAnchor:[0,-20]
         })
       }),
       onEachFeature:(f,lyr)=>{
         const nm = (f.properties && (f.properties.name||f.properties.Name)) || a.name;
-        lyr.bindTooltip(nm, {direction:'top', offset:[0,-26]});
+        lyr.bindTooltip(nm, {direction:'top', offset:[0,-20]});
       }
     });
     poiMarkerLayers[i]=layer;
@@ -2764,8 +2783,8 @@ async function runAnalysis(){
   if(connectorsOn)buildConnectors(sSegs,sGraph);
   // Auto-draw attractor corridors (buffer roads carrying pull from out-of-area POIs)
   buildCorridors();
-  // Draw POI icon markers (visual layer) + populate their toggle list
-  buildPOIMarkers();
+  // Draw POI icon markers — ONLY those within the buffer zone (analysis is done)
+  buildPOIMarkers(true);
   renderPOIToggleList();
   showToast('Analysis complete — '+sSegs.length+' core segments graded');
 }
