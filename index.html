@@ -318,6 +318,11 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
         <div id="att-layer-list"></div>
       </div>
       <div class="section">
+        <div class="sec-label">POI Icons (visual only)</div>
+        <div class="tog-row on" id="poi-master-tog" onclick="togglePOIMaster()"><div class="tog-sw" style="background:#c8a96e"></div>Show all POI icons</div>
+        <div id="poi-toggle-list" style="margin-top:4px"></div>
+      </div>
+      <div class="section">
         <div class="sec-label">Base Network</div>
         <div class="tog-row on" id="tog-base" onclick="toggleBase()"><div class="tog-sw" style="background:#555"></div>Street network</div>
       </div>
@@ -492,11 +497,13 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
 const ATT_COLORS=['#E87722','#1565C0','#2E7D32','#6A0DAD','#c84a8a','#1a9a7a','#888','#c8a96e'];
 let cities=[],activeCity=null;
 let atts=[
-  {name:'Parks',        color:ATT_COLORS[2],data:null,count:0,mode:'catchment',accessLen:100,radius:400},
-  {name:'Schools',      color:ATT_COLORS[0],data:null,count:0,mode:'corridor', accessLen:80, radius:200},
-  {name:'Bus Stops',    color:ATT_COLORS[1],data:null,count:0,mode:'direct',   accessLen:50, radius:80},
-  {name:'Metro Stations',color:ATT_COLORS[3],data:null,count:0,mode:'catchment',accessLen:150,radius:500}
+  {name:'Parks',        color:ATT_COLORS[2],data:null,count:0,mode:'catchment',accessLen:100,radius:400,icon:'🌳'},
+  {name:'Schools',      color:ATT_COLORS[0],data:null,count:0,mode:'corridor', accessLen:80, radius:200,icon:'🏫'},
+  {name:'Bus Stops',    color:ATT_COLORS[1],data:null,count:0,mode:'direct',   accessLen:50, radius:80, icon:'🚌'},
+  {name:'Metro Stations',color:ATT_COLORS[3],data:null,count:0,mode:'catchment',accessLen:150,radius:500,icon:'🚇'}
 ];
+let poiMarkersVisible=true;   // master visual toggle for POI icons
+let poiMarkerLayers={};        // separate from analysis attLayers — purely visual
 let netLayer=null,segLayer=null,connLayer=null;
 let attLayers={},attVis={};
 let bounds={study:null,ctx:null},boundLayers={study:null,ctx:null};
@@ -2082,10 +2089,88 @@ function proxColor(val) {
 }
 
 // ════════════════════════════════════════════════
+//  POI MARKERS — purely visual icon layer, toggleable,
+//  independent of the analysis. Uses emoji placeholders
+//  (swap for custom icons later via the `icon` field).
+// ════════════════════════════════════════════════
+function buildPOIMarkers(){
+  // Clear existing
+  Object.values(poiMarkerLayers).forEach(L=>{ if(L) map.removeLayer(L); });
+  poiMarkerLayers={};
+  atts.forEach((a,i)=>{
+    if(!a.data || !a.data.features) return;
+    const icon = a.icon || '📍';
+    const col = a.color || '#c8a96e';
+    const D = 28; // circle diameter (px) — ~10% larger than before
+    const layer = L.geoJSON(a.data, {
+      pointToLayer:(f,ll)=>L.marker(ll,{
+        icon: L.divIcon({
+          className:'poi-divicon',
+          html:'<div style="width:'+D+'px;height:'+D+'px;border-radius:50%;background:'+col+';'+
+               'border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.5);'+
+               'display:flex;align-items:center;justify-content:center;font-size:'+Math.round(D*0.55)+'px;line-height:1">'+
+               icon+'</div>',
+          iconSize:[D,D], iconAnchor:[D/2,D/2]
+        })
+      }),
+      onEachFeature:(f,lyr)=>{
+        const nm = (f.properties && (f.properties.name||f.properties.Name)) || a.name;
+        lyr.bindTooltip(nm, {direction:'top', offset:[0,-D/2]});
+      }
+    });
+    poiMarkerLayers[i]=layer;
+    if(poiMarkersVisible && (poiTypeVis[i]!==false)) layer.addTo(map);
+  });
+}
+
+let poiTypeVis={}; // per-type visual visibility (separate from analysis attVis)
+
+function togglePOIMaster(){
+  poiMarkersVisible=!poiMarkersVisible;
+  const btn=document.getElementById('poi-master-tog');
+  if(btn) btn.classList.toggle('on', poiMarkersVisible);
+  Object.entries(poiMarkerLayers).forEach(([i,L])=>{
+    if(!L) return;
+    const show = poiMarkersVisible && (poiTypeVis[i]!==false);
+    show ? L.addTo(map) : map.removeLayer(L);
+  });
+  renderPOIToggleList();
+}
+
+function togglePOIType(i){
+  poiTypeVis[i] = poiTypeVis[i]===false ? true : false;
+  const L=poiMarkerLayers[i];
+  if(L){
+    const show = poiMarkersVisible && (poiTypeVis[i]!==false);
+    show ? L.addTo(map) : map.removeLayer(L);
+  }
+  renderPOIToggleList();
+}
+
+function renderPOIToggleList(){
+  const box=document.getElementById('poi-toggle-list');
+  if(!box) return;
+  const withData = atts.map((a,i)=>({a,i})).filter(x=>x.a.data);
+  if(!withData.length){ box.innerHTML='<div style="font-size:9px;color:#666">Load attractor data to show icons.</div>'; return; }
+  box.innerHTML = withData.map(({a,i})=>
+    '<div class="tog-row '+(poiMarkersVisible&&poiTypeVis[i]!==false?'on':'')+'" onclick="togglePOIType('+i+')">'+
+    '<span style="font-size:13px;margin-right:6px">'+(a.icon||'📍')+'</span>'+a.name+
+    '<span style="color:#383838;font-size:9px;margin-left:4px">('+a.count+')</span></div>'
+  ).join('');
+}
+
+// ════════════════════════════════════════════════
 //  SCORE LAYER VIEWER — recolour map by a single
 //  analysis layer so the build-up is inspectable.
 // ════════════════════════════════════════════════
 let activeScoreLayer = null;
+function hidePOIMarkersTemporarily(){
+  Object.values(poiMarkerLayers).forEach(L=>{ if(L && map.hasLayer(L)) map.removeLayer(L); });
+}
+function restorePOIMarkers(){
+  if(!poiMarkersVisible) return;
+  Object.entries(poiMarkerLayers).forEach(([i,L])=>{ if(L && poiTypeVis[i]!==false) L.addTo(map); });
+}
 
 function showScoreLayer(which){
   if(!segments || !segments.length){ showToast('Run an analysis first'); return; }
@@ -2096,6 +2181,7 @@ function showScoreLayer(which){
     document.querySelectorAll('[id^="sl-"]').forEach(el=>el.classList.remove('on'));
     document.getElementById('sl-stats').style.display='none';
     renderSegs(segments); // back to final PWN
+    restorePOIMarkers();   // bring icons back
     showToast('Showing composite PWN grades');
     return;
   }
@@ -2103,6 +2189,9 @@ function showScoreLayer(which){
   activeScoreLayer = which;
   document.querySelectorAll('.tog-row[id^="sl-"]').forEach(el=>el.classList.remove('on'));
   const btn=document.getElementById('sl-'+which); if(btn) btn.classList.add('on');
+  // Hide POI icons while inspecting a score layer so streets are readable
+  // (restore them when returning to the composite PWN view)
+  if(which==='final'){ restorePOIMarkers(); } else { hidePOIMarkersTemporarily(); }
 
   // Map each layer to its score field + colouring
   const layers = {
@@ -2121,17 +2210,22 @@ function showScoreLayer(which){
     renderSegs(segments);
   } else {
     if(segLayer){ map.removeLayer(segLayer); segLayer=null; }
+    let drawn=0;
     segLayer = L.geoJSON(turf.featureCollection(segments), {
       style: f => {
         const s = segments[f._id];
+        if(!s) return { opacity:0 };
         const v = s[L.field] || 0;
-        return { color: L.color(v), weight: 1.5 + v*4, opacity: 0.9 };
+        drawn++;
+        return { color: L.color(v), weight: 2.5 + v*5, opacity: 0.95 };
       },
       onEachFeature: (feature, layer) => {
         const s = segments[feature._id]; if(!s) return;
         layer.on('click', () => showInfo(s));
       }
     }).addTo(map);
+    if(segLayer.bringToFront) segLayer.bringToFront();
+    if(typeof dbg==='function') dbg('Score layer "'+which+'" drawn: '+drawn+' segments','OK');
   }
 
   // Stats summary
@@ -2578,6 +2672,9 @@ async function runAnalysis(){
   if(connectorsOn)buildConnectors(sSegs,sGraph);
   // Auto-draw attractor corridors (buffer roads carrying pull from out-of-area POIs)
   buildCorridors();
+  // Draw POI icon markers (visual layer) + populate their toggle list
+  buildPOIMarkers();
+  renderPOIToggleList();
   showToast('Analysis complete — '+sSegs.length+' core segments graded');
 }
 
