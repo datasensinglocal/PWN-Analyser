@@ -921,6 +921,8 @@ function autoGenerateContext(){
     const buffered = turf.buffer(studyPoly, bufKm, {units:'kilometers'});
     if(!buffered||!buffered.geometry) return;
     window._bufferPolygon = buffered; // store for POI filtering after analysis
+    // Show trip attractors within the buffer zone now that we have a study area
+    if(atts.some(a=>a.data)){ buildPOIMarkers(true); renderPOIToggleList(); }
     const simplified = turf.simplify(buffered, {tolerance:0.0008, highQuality:true});
     const simCoords = simplified.geometry.type==='Polygon'
       ? simplified.geometry.coordinates[0]
@@ -1001,9 +1003,8 @@ function loadCityFolder(input){
   let pending = 1 + poiFiles.length;
   const done = ()=>{ if(--pending<=0){
     renderAtts(); renderAttLayers();
-    buildPOIMarkers();        // show pins so user can see what loaded
     renderPOIToggleList();
-    showToast('Loaded '+cityName+': network + '+poiFiles.length+' POI types. Set each POI\'s reach, then Run.');
+    showToast('Loaded '+cityName+': network + '+poiFiles.length+' POI types. Draw a study area to see attractors.');
   }};
 
   // Load network
@@ -1117,7 +1118,7 @@ function loadAttFile(i,input){
       style:{color:atts[i].color,weight:2}
     }).addTo(map);
     attVis[i]=true;renderAtts();renderAttLayers();
-    buildPOIMarkers(); renderPOIToggleList();  // show pins on upload
+    renderPOIToggleList();
     showToast(atts[i].name+' loaded — '+atts[i].count+' features');
   });
 }
