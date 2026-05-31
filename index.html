@@ -1526,6 +1526,7 @@ function runSS(head, eTo, eAng, eMet, n, metRadius, originList, choiceSet, worke
   const pred = new Int32Array(n);
 
   const settled = new Int32Array(n); // reusable: list of reached nodes
+  const reached = new Uint8Array(n); // flag: already in settled this run
   for(let oi=0; oi<total; oi++){
     const src = originList[oi];
     aD.fill(Infinity); mD.fill(Infinity); pred.fill(-1);
@@ -1534,8 +1535,8 @@ function runSS(head, eTo, eAng, eMet, n, metRadius, originList, choiceSet, worke
     const pq = new Heap(); pq.push({i:src,a:0,m:0});
     while(!pq.empty()){
       const{i,a,m}=pq.pop();
-      if(a>aD[i])continue;
-      settled[nSettled++]=i;            // record reached node
+      if(a>aD[i])continue;          // stale entry — skip
+      if(!reached[i]){ reached[i]=1; settled[nSettled++]=i; } // record once
       const start=head[i], end=head[i+1];
       for(let e=start;e<end;e++){
         const to=eTo[e];
@@ -1545,6 +1546,8 @@ function runSS(head, eTo, eAng, eMet, n, metRadius, originList, choiceSet, worke
         if(na<aD[to]){aD[to]=na;mD[to]=nm;pred[to]=i;pq.push({i:to,a:na,m:nm});}
       }
     }
+    // clear reached flags for the nodes we touched (cheap — only settled ones)
+    for(let k=0;k<nSettled;k++) reached[settled[k]]=0;
     // Integration: only over nodes actually reached (within radius)
     for(let k=0;k<nSettled;k++){
       const dst=settled[k];
@@ -1559,6 +1562,10 @@ function runSS(head, eTo, eAng, eMet, n, metRadius, originList, choiceSet, worke
         let cur=pred[dst];
         while(cur!==-1&&cur!==src){choice[cur]++;cur=pred[cur];}
       }
+    }
+    if(oi===0 && workerId===0){
+      // Diagnostic: report first-origin exploration size and time
+      self.postMessage({type:'diag', nSettled, ms:Date.now()-startTime, workerId});
     }
     if(oi%REPORT===0){
       const elapsed = Date.now() - startTime;
@@ -1577,8 +1584,12 @@ function runSS(head, eTo, eAng, eMet, n, metRadius, originList, choiceSet, worke
 self.onmessage = function(e){
   const{head, eTo, eAng, eMet, n, metRadius, originList, choiceSet, workerId} = e.data;
   self.postMessage({type:'progress', src:0, n:originList.length, remaining:0, workerId});
-  const result = runSS(head, eTo, eAng, eMet, n, metRadius, originList, choiceSet, workerId);
-  self.postMessage({type:'done', result, workerId});
+  try {
+    const result = runSS(head, eTo, eAng, eMet, n, metRadius, originList, choiceSet, workerId);
+    self.postMessage({type:'done', result, workerId});
+  } catch(err) {
+    self.postMessage({type:'error', message:(err&&err.message)||String(err), workerId});
+  }
 };
 `;
 
@@ -1682,12 +1693,23 @@ function runSSInWorker(graph, n, metRadius, label, pctFrom, pctTo, originIndices
       worker.onmessage=function(e){
         lastProgress=Date.now();
         const {type, src, result, workerId}=e.data;
+        if(type==='diag'){
+          console.log('First origin: '+e.data.nSettled+' nodes explored in '+e.data.ms+'ms');
+          return;
+        }
         if(type==='progress'){
           progressPerWorker[workerId]=src;
           const totalDone=progressPerWorker.reduce((s,v)=>s+v,0);
           const pct=pctFrom+(pctTo-pctFrom)*(totalDone/nOrigins);
           const remStr=e.data.remaining>0?'  (~'+e.data.remaining+'s)':'';
           setP(pct, label+' — '+totalDone+'/'+nOrigins+' origins · '+nW+' cores'+remStr, phId, totalDone+'/'+nOrigins);
+        } else if(type==='error'){
+          cleanup();
+          console.error('Worker '+workerId+' error:', e.data.message);
+          document.getElementById('prog-step').textContent='Worker error: '+e.data.message;
+          document.getElementById('prog-overlay').style.display='none';
+          showToast('SS worker error: '+e.data.message);
+          if(!failed){ failed=true; reject(new Error(e.data.message)); }
         } else if(type==='done'){
           for(let i=0;i<n;i++){
             totDepth[i]+=result.totDepth[i];
