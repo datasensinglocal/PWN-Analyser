@@ -282,9 +282,9 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
       <div class="section">
         <div class="sec-label">Space Syntax Sub-score Weights</div>
         <div class="ss-block">
-          <div class="ss-wr"><span class="ss-lbl">Connectivity</span><input type="range" id="w-conn" min="0" max="100" value="20" step="1" oninput="syncSSW()"/><span class="ss-val" id="wv-conn">10%</span></div>
-          <div class="ss-wr"><span class="ss-lbl">15-min Integration</span><input type="range" id="w-li8" min="0" max="100" value="45" step="1" oninput="syncSSW()"/><span class="ss-val" id="wv-li8">30%</span></div>
-          <div class="ss-wr"><span class="ss-lbl">15-min Choice</span><input type="range" id="w-ch" min="0" max="100" value="35" step="1" oninput="syncSSW()"/><span class="ss-val" id="wv-ch">25%</span></div>
+          <div class="ss-wr"><span class="ss-lbl">Connectivity</span><input type="range" id="w-conn" min="0" max="100" value="15" step="1" oninput="syncSSW()"/><span class="ss-val" id="wv-conn">15%</span></div>
+          <div class="ss-wr"><span class="ss-lbl">15-min Integration</span><input type="range" id="w-li8" min="0" max="100" value="45" step="1" oninput="syncSSW()"/><span class="ss-val" id="wv-li8">45%</span></div>
+          <div class="ss-wr"><span class="ss-lbl">15-min Choice</span><input type="range" id="w-ch" min="0" max="100" value="40" step="1" oninput="syncSSW()"/><span class="ss-val" id="wv-ch">40%</span></div>
           <div class="ss-total" id="ss-total">Total: 100%</div>
         </div>
       </div>
@@ -401,8 +401,8 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
     </div>
   </div>
   <div class="bl" id="bl">
-    <div class="bl-row"><div class="bl-line" style="background:#D0021B"></div>Study Area</div>
-    <div class="bl-row"><div class="bl-line" style="background:#1565C0"></div>Analysis Buffer (auto 1.25km)</div>
+    <div class="bl-row"><div class="bl-line" style="background:#D0021B"></div>Study Area<span id="bl-study-area" style="margin-left:6px;color:#c8a96e;font-weight:600"></span></div>
+    <div class="bl-row"><div class="bl-line" style="background:#1565C0"></div>Analysis Buffer<span id="bl-buffer-area" style="margin-left:6px;color:#7ab8de;font-weight:600"></span></div>
   </div>
   <div class="info-panel" id="info-panel">
     <span class="info-close" onclick="document.getElementById('info-panel').style.display='none'">×</span>
@@ -797,6 +797,7 @@ function addEditNodes(type, pts){
           dashArray:type==='study'?'6,3':'4,2'
         }).addTo(map);
         bounds[type] = pts.map(p=>[p[1],p[0]]); // store as [lon,lat]
+        updateBoundaryAreas();
       });
       map.once('mouseup',()=>{
         map.dragging.enable(); map.off('mousemove');
@@ -883,6 +884,19 @@ function deleteSavedBoundary(){
   showToast('"'+name+'" deleted');
 }
 
+function updateBoundaryAreas(){
+  const sEl=document.getElementById('bl-study-area');
+  const bEl=document.getElementById('bl-buffer-area');
+  if(sEl){
+    const a = bounds.study ? estimateAreaKm2(bounds.study) : null;
+    sEl.textContent = a!=null ? '· '+a.toFixed(2)+' km²' : '';
+  }
+  if(bEl){
+    const a = bounds.ctx ? estimateAreaKm2(bounds.ctx) : null;
+    bEl.textContent = a!=null ? '· '+a.toFixed(2)+' km²' : '';
+  }
+}
+
 function applyBoundary(type, coordsLonLat){
   // coordsLonLat = [[lon,lat],...] stored format
   const col = getCol(type);
@@ -901,7 +915,8 @@ function applyBoundary(type, coordsLonLat){
   // Show UI
   document.getElementById(type==='study'?'study-actions':'ctx-actions').style.display='flex';
   document.getElementById('bl').style.display='block';
-  if(type==='study') setTimeout(()=>{ autoGenerateContext(); previewSegmentCount(); }, 200);
+  updateBoundaryAreas();
+  if(type==='study') setTimeout(()=>{ autoGenerateContext(); previewSegmentCount(); updateBoundaryAreas(); }, 200);
 }
 
 function resetBoundary(type){
@@ -913,6 +928,7 @@ function resetBoundary(type){
   if(!bounds.study && !bounds.ctx) document.getElementById('bl').style.display='none';
   if(type==='study') clearAreaWarning();
   showToast((type==='study'?'Study area':'Global context')+' cleared');
+  updateBoundaryAreas();
 }
 
 function autoGenerateContext(){
@@ -1966,6 +1982,7 @@ function computeProximity(segs,graph,attConfigs){
     if(!cfg.data||!cfg.data.features)return;
     const{name,mode,accessLen,radius,vis}=cfg;
     if(vis===false)return;
+    let _snapped=0, _failed=0;
 
     cfg.data.features.forEach(f=>{
       // Get POI point
@@ -1987,7 +2004,8 @@ function computeProximity(segs,graph,attConfigs){
           if(d<nearestD&&d<SNAP_R){nearestD=d;nearestIdx=i;}
         }
       });
-      if(nearestIdx<0)return;
+      if(nearestIdx<0){ _failed++; return; }
+      _snapped++;
 
       // Step 2: Propagate from host segment through network
       if(mode==='direct'){
@@ -2036,6 +2054,7 @@ function computeProximity(segs,graph,attConfigs){
         }
       }
     });
+    if(typeof dbg==='function') dbg('Proximity "'+name+'": '+_snapped+' snapped, '+_failed+' failed (access '+accessLen+'m, radius '+radius+'m)','OK');
   });
 
   // Robust normalisation — over CORE segments only. Using the single MAX makes one
@@ -2845,8 +2864,19 @@ async function runAnalysis(){
   const isolatedCore=coreSegs.length-coreConnCount;
   console.log('Connectivity: '+connCount+'/'+allSegs.length+' total connected; core isolated='+isolatedCore);
   setPhaseCount('conn',coreConnCount+'/'+coreSegs.length+' core connected'+(isolatedCore>0?' ('+isolatedCore+' isolated)':''));
-  const maxConn=Math.max(1,...allSegs.map((s,i)=>sGraph[i]?sGraph[i].length:0));
-  allSegs.forEach((s,i)=>{s._co=sGraph[i]?sGraph[i].length:0;s._coN=s._co/maxConn;});
+  // CONNECTIVITY (Space Syntax definition): the static, LOCAL one-step measure —
+  // the number of segments that directly intersect this segment (its graph degree).
+  // This is deliberately local. The "how well-meshed in the wider network" question
+  // is what INTEGRATION (the n-step measure) answers, so we don't conflate them here.
+  allSegs.forEach((s,i)=>{ s._co = sGraph[i]?sGraph[i].length:0; });
+  // Normalise over CORE only (buffer is coarse and would inflate the ceiling),
+  // using the 95th-percentile degree so one unusually-branchy road doesn't compress
+  // the scale — same normalisation rule used for integration, choice and proximity.
+  const coreDeg = allSegs.filter(s=>s._inStudy).map(s=>s._co).filter(v=>v>0).sort((a,b)=>a-b);
+  let connCeil = 1;
+  if(coreDeg.length){ connCeil = Math.max(1, coreDeg[Math.floor(coreDeg.length*0.95)] || coreDeg[coreDeg.length-1]); }
+  allSegs.forEach(s=>{ s._coN = Math.min(1, s._co/connCeil); });
+  if(typeof dbg==='function') dbg('Connectivity (1-step degree, SS-correct): core ceil(p95)='+connCeil,'OK');
 
   // Space Syntax — single 15-min radius, computed on all segments
   setP(38,'Space Syntax (15-min walk) — '+allSegs.length+' segments...','nain800');await sleep(30);
