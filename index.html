@@ -1601,8 +1601,10 @@ function makeSSWorker() {
 
 // Choose how many parallel workers to use
 function workerCount(){
-  const hw = navigator.hardwareConcurrency || 4;
-  return Math.max(1, Math.min(hw - 1, 8)); // leave one core for UI, cap at 8
+  // Single worker: one worker handles ~500 origins in well under 1s, and spawning
+  // multiple Blob-URL workers simultaneously has proven unreliable (silent hangs).
+  // Correctness and reliability over theoretical parallelism.
+  return 1;
 }
 
 // Decide which origins contribute to choice/betweenness (sampling for large nets)
@@ -1711,10 +1713,18 @@ function runSSInWorker(graph, n, metRadius, label, pctFrom, pctTo, originIndices
           showToast('SS worker error: '+e.data.message);
           if(!failed){ failed=true; reject(new Error(e.data.message)); }
         } else if(type==='done'){
-          for(let i=0;i<n;i++){
-            totDepth[i]+=result.totDepth[i];
-            nodeCnt[i] +=result.nodeCnt[i];
-            choice[i]  +=result.choice[i];
+          console.log('Received done from worker '+workerId);
+          try {
+            for(let i=0;i<n;i++){
+              totDepth[i]+=result.totDepth[i];
+              nodeCnt[i] +=result.nodeCnt[i];
+              choice[i]  +=result.choice[i];
+            }
+          } catch(mergeErr){
+            cleanup();
+            console.error('Merge error:', mergeErr, 'result=', result);
+            if(!failed){ failed=true; reject(mergeErr); }
+            return;
           }
           done++;
           if(done===nW && !failed){
