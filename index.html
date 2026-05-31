@@ -2009,11 +2009,24 @@ function computeProximity(segs,graph,attConfigs){
     });
   });
 
-  // Min-max normalise — over CORE segments only, so a high-scoring buffer
-  // road doesn't compress the core's proximity scale (matches SS normalisation)
+  // Robust normalisation — over CORE segments only. Using the single MAX makes one
+  // POI-dense street (e.g. near a cluster of bus stops) compress every other street
+  // to near-zero, giving a flat one-colour map. Instead normalise to the 95th
+  // percentile of non-zero scores so the bulk of the distribution spreads across the
+  // colour range, and clamp the top 5% to 1.0.
   const coreForNorm = segs.filter(s=>s._inStudy!==false);
-  const mx=Math.max(1,...coreForNorm.map(s=>s._pxRaw));
-  segs.forEach(s=>{s._px=s._pxRaw/mx;});
+  const nonZero = coreForNorm.map(s=>s._pxRaw).filter(v=>v>0).sort((a,b)=>a-b);
+  let ceil = 1;
+  if(nonZero.length){
+    const p95 = nonZero[Math.floor(nonZero.length*0.95)] || nonZero[nonZero.length-1];
+    ceil = Math.max(1e-6, p95);
+  }
+  segs.forEach(s=>{ s._px = Math.min(1, s._pxRaw/ceil); });
+  if(typeof dbg==='function'){
+    const cv = coreForNorm.map(s=>s._px);
+    const mean = cv.reduce((a,b)=>a+b,0)/Math.max(1,cv.length);
+    dbg('Proximity normalised: ceil(p95)='+ceil.toFixed(2)+', mean='+mean.toFixed(3)+', max='+Math.max(...cv).toFixed(3),'OK');
+  }
 }
 
 /* ════════════════════════════════════════════════
