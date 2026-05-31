@@ -105,9 +105,15 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
 .pwn-val{font-size:10px;color:#ccc;font-family:monospace;width:34px;text-align:right}
 
 /* layer toggles */
-.tog-row{display:flex;align-items:center;gap:8px;font-size:11px;color:#484848;cursor:pointer;padding:4px 0;transition:color .15s}
-.tog-row.on{color:#ccc}
-.tog-sw{width:20px;height:3px;border-radius:2px;flex-shrink:0;opacity:.3;transition:opacity .2s}
+.tog-row{display:flex;align-items:center;gap:8px;font-size:11px;color:#888;cursor:pointer;padding:5px 0;transition:color .15s}
+.tog-row.on{color:#e0e0e0}
+.tog-sw{width:18px;height:3px;border-radius:2px;flex-shrink:0;opacity:.3;transition:opacity .2s}
+.tog-row.on .tog-sw{opacity:1}
+.tog-cbx{width:15px;height:15px;border:1.5px solid #555;border-radius:3px;flex-shrink:0;position:relative;transition:all .15s;background:#1a1a1a}
+.tog-row.on .tog-cbx{background:#c8a96e;border-color:#c8a96e}
+.tog-row.on .tog-cbx:after{content:'';position:absolute;left:4px;top:1px;width:4px;height:8px;border:solid #1a1a1a;border-width:0 2px 2px 0;transform:rotate(45deg)}
+.tog-row:hover{color:#fff}
+.tog-swatch{width:14px;height:3px;border-radius:2px;flex-shrink:0}
 .tog-row.on .tog-sw{opacity:1}
 
 /* stats */
@@ -298,20 +304,20 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
       <div class="section">
         <div class="sec-label">Score Layers — inspect the analysis</div>
         <div style="font-size:9px;color:#888;margin:-2px 0 8px;line-height:1.4">Click a layer to recolour the map by that score. See the Space Syntax measures, the POI proximity, and how they build into the composite PWN.</div>
-        <div class="tog-row" id="sl-conn" onclick="showScoreLayer('conn')"><div class="tog-sw" style="background:#0fb"></div>Connectivity</div>
-        <div class="tog-row" id="sl-int" onclick="showScoreLayer('int')"><div class="tog-sw" style="background:#0af"></div>15-min Integration</div>
-        <div class="tog-row" id="sl-cho" onclick="showScoreLayer('cho')"><div class="tog-sw" style="background:#08f"></div>15-min Choice</div>
-        <div class="tog-row" id="sl-ss" onclick="showScoreLayer('ss')"><div class="tog-sw" style="background:#f40"></div>Space Syntax Composite</div>
-        <div class="tog-row" id="sl-px" onclick="showScoreLayer('px')"><div class="tog-sw" style="background:#c8a96e"></div>POI Proximity</div>
-        <div class="tog-row" id="sl-final" onclick="showScoreLayer('final')"><div class="tog-sw" style="background:linear-gradient(90deg,#D0021B,#E87722,#F5C518)"></div>Composite PWN (final grade)</div>
+        <div class="tog-row" id="sl-conn" onclick="showScoreLayer('conn')"><div class="tog-swatch" style="background:#0fb"></div>Connectivity</div>
+        <div class="tog-row" id="sl-int" onclick="showScoreLayer('int')"><div class="tog-swatch" style="background:#0af"></div>15-min Integration</div>
+        <div class="tog-row" id="sl-cho" onclick="showScoreLayer('cho')"><div class="tog-swatch" style="background:#08f"></div>15-min Choice</div>
+        <div class="tog-row" id="sl-ss" onclick="showScoreLayer('ss')"><div class="tog-swatch" style="background:#f40"></div>Space Syntax Composite</div>
+        <div class="tog-row" id="sl-px" onclick="showScoreLayer('px')"><div class="tog-swatch" style="background:#c8a96e"></div>POI Proximity</div>
+        <div class="tog-row" id="sl-final" onclick="showScoreLayer('final')"><div class="tog-swatch" style="background:linear-gradient(90deg,#D0021B,#E87722,#F5C518)"></div>Composite PWN (final grade)</div>
         <div id="sl-stats" style="font-size:9px;color:#aaa;font-family:monospace;margin-top:8px;padding:6px 8px;background:#141414;border-radius:4px;display:none;line-height:1.6"></div>
       </div>
       <div class="section">
         <div class="sec-label">PWN Layers</div>
-        <div class="tog-row on" id="tog-pwn1" onclick="togglePWN('pwn1')"><div class="tog-sw" style="background:#D0021B"></div>PWN 1 — Critical Backbone</div>
-        <div class="tog-row on" id="tog-pwn2" onclick="togglePWN('pwn2')"><div class="tog-sw" style="background:#E87722"></div>PWN 2 — Secondary Corridor</div>
-        <div class="tog-row on" id="tog-pwn3" onclick="togglePWN('pwn3')"><div class="tog-sw" style="background:#F5C518"></div>PWN 3 — Local Feeder</div>
-        <div class="tog-row on" id="tog-pwn4" onclick="togglePWN('pwn4')"><div class="tog-sw" style="background:#1565C0"></div>PWN 4 — Spatial Enclave</div>
+        <div class="tog-row on" id="tog-pwn1" onclick="togglePWN('pwn1')"><div class="tog-cbx"></div><div class="tog-swatch" style="background:#D0021B"></div>PWN 1 — Critical Backbone</div>
+        <div class="tog-row on" id="tog-pwn2" onclick="togglePWN('pwn2')"><div class="tog-cbx"></div><div class="tog-swatch" style="background:#E87722"></div>PWN 2 — Secondary Corridor</div>
+        <div class="tog-row on" id="tog-pwn3" onclick="togglePWN('pwn3')"><div class="tog-cbx"></div><div class="tog-swatch" style="background:#F5C518"></div>PWN 3 — Local Feeder</div>
+        <div class="tog-row on" id="tog-pwn4" onclick="togglePWN('pwn4')"><div class="tog-cbx"></div><div class="tog-swatch" style="background:#1565C0"></div>PWN 4 — Spatial Enclave</div>
       </div>
       <div class="section">
         <div class="sec-label">Attractor Layers</div>
@@ -319,12 +325,12 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
       </div>
       <div class="section">
         <div class="sec-label">POI Icons (visual only)</div>
-        <div class="tog-row on" id="poi-master-tog" onclick="togglePOIMaster()"><div class="tog-sw" style="background:#c8a96e"></div>Show all POI icons</div>
+        <div class="tog-row on" id="poi-master-tog" onclick="togglePOIMaster()"><div class="tog-cbx"></div>Show all POI icons</div>
         <div id="poi-toggle-list" style="margin-top:4px"></div>
       </div>
       <div class="section">
         <div class="sec-label">Base Network</div>
-        <div class="tog-row on" id="tog-base" onclick="toggleBase()"><div class="tog-sw" style="background:#555"></div>Street network</div>
+        <div class="tog-row on" id="tog-base" onclick="toggleBase()"><div class="tog-cbx"></div><div class="tog-swatch" style="background:#555"></div>Street network</div>
       </div>
     </div>
   </div>
@@ -1067,8 +1073,8 @@ function renderAtts(){
 function renderAttLayers(){
   document.getElementById('att-layer-list').innerHTML=atts.map((a,i)=>a.data?`
     <div class="tog-row ${attVis[i]!==false?'on':''}" id="tog-att-${i}" onclick="toggleAtt(${i})">
-      <div class="tog-sw" style="background:${a.color}"></div>
-      ${a.name} <span style="color:#383838;font-size:9px;margin-left:3px">(${a.count})</span>
+      <div class="tog-cbx"></div><div class="tog-swatch" style="background:${a.color};height:10px;width:10px;border-radius:50%"></div>
+      ${a.name} <span style="color:#555;font-size:9px;margin-left:3px">(${a.count})</span>
     </div>`:''
   ).join('');
 }
@@ -2045,13 +2051,11 @@ function showPhase(segs, label, sublabel, colorFn, weightFn) {
 
   segLayer = L.geoJSON(turf.featureCollection(segs), {
     style: f => {
-      const s = segs[f._id];
-      return { color: colorFn(s), weight: weightFn ? weightFn(s) : 2.5, opacity: 0.85 };
+      return { color: colorFn(f), weight: weightFn ? weightFn(f) : 2.5, opacity: 0.85 };
     },
     onEachFeature: (feature, layer) => {
-      const s = segs[feature._id]; if(!s) return;
-      layer._pwn = s._pwn || 'pwn4';
-      layer.on('click', () => showInfo(s));
+      layer._pwn = feature._pwn || 'pwn4';
+      layer.on('click', () => showInfo(feature));
     }
   }).addTo(map);
 }
@@ -2099,23 +2103,24 @@ function buildPOIMarkers(){
   poiMarkerLayers={};
   atts.forEach((a,i)=>{
     if(!a.data || !a.data.features) return;
-    const icon = a.icon || '📍';
     const col = a.color || '#c8a96e';
-    const D = 28; // circle diameter (px) — ~10% larger than before
+    // Clean Google-Maps-style teardrop pin (small, simple, recognisable)
+    const pinSVG =
+      '<svg width="20" height="28" viewBox="0 0 20 28" xmlns="http://www.w3.org/2000/svg">'+
+      '<path d="M10 0C4.5 0 0 4.5 0 10c0 7 10 18 10 18s10-11 10-18C20 4.5 15.5 0 10 0z" '+
+      'fill="'+col+'" stroke="#fff" stroke-width="1.5"/>'+
+      '<circle cx="10" cy="10" r="3.5" fill="#fff"/></svg>';
     const layer = L.geoJSON(a.data, {
       pointToLayer:(f,ll)=>L.marker(ll,{
         icon: L.divIcon({
-          className:'poi-divicon',
-          html:'<div style="width:'+D+'px;height:'+D+'px;border-radius:50%;background:'+col+';'+
-               'border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.5);'+
-               'display:flex;align-items:center;justify-content:center;font-size:'+Math.round(D*0.55)+'px;line-height:1">'+
-               icon+'</div>',
-          iconSize:[D,D], iconAnchor:[D/2,D/2]
+          className:'poi-pin',
+          html:'<div style="filter:drop-shadow(0 1px 1.5px rgba(0,0,0,.4))">'+pinSVG+'</div>',
+          iconSize:[20,28], iconAnchor:[10,28], popupAnchor:[0,-26]
         })
       }),
       onEachFeature:(f,lyr)=>{
         const nm = (f.properties && (f.properties.name||f.properties.Name)) || a.name;
-        lyr.bindTooltip(nm, {direction:'top', offset:[0,-D/2]});
+        lyr.bindTooltip(nm, {direction:'top', offset:[0,-26]});
       }
     });
     poiMarkerLayers[i]=layer;
@@ -2154,8 +2159,10 @@ function renderPOIToggleList(){
   if(!withData.length){ box.innerHTML='<div style="font-size:9px;color:#666">Load attractor data to show icons.</div>'; return; }
   box.innerHTML = withData.map(({a,i})=>
     '<div class="tog-row '+(poiMarkersVisible&&poiTypeVis[i]!==false?'on':'')+'" onclick="togglePOIType('+i+')">'+
-    '<span style="font-size:13px;margin-right:6px">'+(a.icon||'📍')+'</span>'+a.name+
-    '<span style="color:#383838;font-size:9px;margin-left:4px">('+a.count+')</span></div>'
+    '<div class="tog-cbx"></div>'+
+    '<div class="tog-swatch" style="background:'+(a.color||'#c8a96e')+';height:10px;width:10px;border-radius:50%"></div>'+
+    a.name+
+    '<span style="color:#555;font-size:9px;margin-left:4px">('+a.count+')</span></div>'
   ).join('');
 }
 
@@ -2213,15 +2220,13 @@ function showScoreLayer(which){
     let drawn=0;
     segLayer = L.geoJSON(turf.featureCollection(segments), {
       style: f => {
-        const s = segments[f._id];
-        if(!s) return { opacity:0 };
-        const v = s[L.field] || 0;
+        // f IS the segment object (turf feature carries the score fields directly)
+        const v = (f[L.field] != null ? f[L.field] : 0);
         drawn++;
         return { color: L.color(v), weight: 2.5 + v*5, opacity: 0.95 };
       },
       onEachFeature: (feature, layer) => {
-        const s = segments[feature._id]; if(!s) return;
-        layer.on('click', () => showInfo(s));
+        layer.on('click', () => showInfo(feature));
       }
     }).addTo(map);
     if(segLayer.bringToFront) segLayer.bringToFront();
@@ -2298,13 +2303,13 @@ function renderSegs(segs){
   const CMAP={pwn1:'#D0021B',pwn2:'#E87722',pwn3:'#F5C518',pwn4:'#1565C0'};
   const WMAP={pwn1:6,pwn2:4,pwn3:2.5,pwn4:1.5};
   segLayer=L.geoJSON(turf.featureCollection(segs),{
-    style:f=>{const s=segs[f._id],pwn=s?s._pwn:'pwn4';return{color:CMAP[pwn]||'#888',weight:WMAP[pwn]||2,opacity:pwnVis[pwn]?0.9:0};},
+    style:f=>{const pwn=f._pwn||'pwn4';return{color:CMAP[pwn]||'#888',weight:WMAP[pwn]||2,opacity:pwnVis[pwn]?0.9:0};},
     onEachFeature:(feature,layer)=>{
-      const s=segs[feature._id];if(!s)return;
-      layer._pwn=s._pwn;
-      layer.on('click',()=>showInfo(s));
-      layer.on('mouseover',()=>layer.setStyle({weight:WMAP[s._pwn]+3,opacity:1}));
-      layer.on('mouseout', ()=>layer.setStyle({weight:WMAP[s._pwn],opacity:0.9}));
+      const pwn=feature._pwn||'pwn4';
+      layer._pwn=pwn;
+      layer.on('click',()=>showInfo(feature));
+      layer.on('mouseover',()=>layer.setStyle({weight:WMAP[pwn]+3,opacity:1}));
+      layer.on('mouseout', ()=>layer.setStyle({weight:WMAP[pwn],opacity:0.9}));
     }
   }).addTo(map);
   if(netLayer)map.removeLayer(netLayer);
