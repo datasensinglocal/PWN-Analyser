@@ -311,7 +311,7 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
         <div class="tog-row" id="sl-int" onclick="showScoreLayer('int')"><div class="tog-swatch" style="background:#0af"></div>15-min Integration</div>
         <div class="tog-row" id="sl-cho" onclick="showScoreLayer('cho')"><div class="tog-swatch" style="background:#08f"></div>15-min Choice</div>
         <div class="tog-row" id="sl-ss" onclick="showScoreLayer('ss')"><div class="tog-swatch" style="background:#f40"></div>Space Syntax Composite</div>
-        <div class="tog-row" id="sl-px" onclick="showScoreLayer('px')"><div class="tog-swatch" style="background:#c8a96e"></div>POI Proximity</div>
+        <div class="tog-row" id="sl-px" onclick="showScoreLayer('px')"><div class="tog-swatch" style="background:#46c846"></div>POI Proximity</div>
         <div class="tog-row" id="sl-final" onclick="showScoreLayer('final')"><div class="tog-swatch" style="background:linear-gradient(90deg,#D0021B,#E87722,#F5C518)"></div>Composite PWN (final grade)</div>
         <div id="sl-stats" style="font-size:9px;color:#aaa;font-family:monospace;margin-top:8px;padding:6px 8px;background:#141414;border-radius:4px;display:none;line-height:1.6"></div>
       </div>
@@ -1195,8 +1195,8 @@ function renderAtts(){
         <div class="att-cfg-row">
           <span class="att-cfg-lbl">Access roads</span>
           <select class="mode-sel" onchange="atts[${i}].snapMode=this.value">
-            <option value="single" ${(a.snapMode||'single')==='single'?'selected':''}>Single (nearest road)</option>
-            <option value="all"    ${a.snapMode==='all'?'selected':''}>All directions (≤50m)</option>
+            <option value="single" ${(a.snapMode||'single')==='single'?'selected':''}>Single closest road</option>
+            <option value="all"    ${a.snapMode==='all'?'selected':''}>Roads in all directions</option>
           </select>
         </div>
       </div>
@@ -1985,6 +1985,11 @@ function computeProximity(segs,graph,attConfigs){
   const n=segs.length;
   // Reset
   segs.forEach(s=>{s._pxRaw=0;s._pxDet={};});
+  // Network bounding box (+~250m margin) for a cheap early-skip of far-away POIs
+  let bbMinX=Infinity,bbMinY=Infinity,bbMaxX=-Infinity,bbMaxY=-Infinity;
+  segs.forEach(s=>{ const m=s._mid; if(m){ if(m[0]<bbMinX)bbMinX=m[0]; if(m[0]>bbMaxX)bbMaxX=m[0]; if(m[1]<bbMinY)bbMinY=m[1]; if(m[1]>bbMaxY)bbMaxY=m[1]; } });
+  const MARGIN=0.0025; // ~275m
+  bbMinX-=MARGIN; bbMinY-=MARGIN; bbMaxX+=MARGIN; bbMaxY+=MARGIN;
 
   attConfigs.forEach(cfg=>{
     if(!cfg.data||!cfg.data.features)return;
@@ -1992,45 +1997,102 @@ function computeProximity(segs,graph,attConfigs){
     if(vis===false)return;
     let _snapped=0, _failed=0;
 
+    let _firstLogged=false, _coreHost=0, _bufHost=0;
     cfg.data.features.forEach(f=>{
-      // Get POI point
+      // Get POI centroid (cheap) for the bbox skip & labels.
       let poiPt;
       try{
-        if(f.geometry.type==='Point')poiPt=f.geometry.coordinates;
-        else poiPt=turf.centroid(f).geometry.coordinates;
+        poiPt = (f.geometry.type==='Point') ? f.geometry.coordinates : turf.centroid(f).geometry.coordinates;
       }catch(ex){return;}
+      // Cheap early-skip: POI centroid well outside the network bbox can't snap — skip
+      // before doing any expensive perimeter densify or per-segment scan.
+      if(poiPt[0]<bbMinX||poiPt[0]>bbMaxX||poiPt[1]<bbMinY||poiPt[1]>bbMaxY){ _failed++; return; }
+      // Build SNAP POINTS. For a polygon (park), roads are around the PERIMETER not the
+      // centre, so densify the boundary (a point every ~25m) and snap against those.
+      let snapPts;
+      if(f.geometry.type==='Point'){
+        snapPts = [poiPt];
+      } else {
+        snapPts = [];
+        try{
+          let lines=[];
+          const g=f.geometry;
+          if(g.type==='Polygon'||g.type==='MultiPolygon'){ const ln=turf.polygonToLine(f); lines = ln.type==='FeatureCollection'?ln.features:[ln]; }
+          else if(g.type==='LineString'||g.type==='MultiLineString'){ lines=[f]; }
+          for(const ln of lines){
+            const L=turf.length(ln,{units:'meters'});
+            for(let d=0; d<=L; d+=25){ snapPts.push(turf.along(ln,d,{units:'meters'}).geometry.coordinates); }
+          }
+        }catch(ex){}
+        if(!snapPts.length) snapPts = [poiPt];
+      }
+      // Diagnostic: for the first feature, report the nearest segment distance in metres
+      if(!_firstLogged){
+        _firstLogged=true;
+        let nd=Infinity;
+        segs.forEach((s)=>{ const pts=s._proxPts||[s._mid]; for(const sp of pts){ const dx=sp[0]-poiPt[0],dy=sp[1]-poiPt[1]; const d=Math.sqrt(dx*dx+dy*dy); if(d<nd)nd=d; } });
+        if(typeof dbg==='function') dbg('Proximity "'+name+'" first POI at ['+poiPt[0].toFixed(4)+','+poiPt[1].toFixed(4)+'], nearest seg '+(nd*111000).toFixed(0)+'m away','OK');
+      }
 
       // Step 1: SNAP — find host segment(s).
       // Most POIs snap to the SINGLE closest road within 220m (a school fronts one street).
       // Parks & Metro Stations are large features bordered by several roads, so they snap
       // to ALL roads within 50m (every adjacent road registers the pull, not just one).
       const SNAP_R = 0.002;               // ~220m search ceiling for nearest-single snap
-      const MULTI_R = 0.00045;            // ~50m for parks/metro multi-snap
+      const MULTI_R = 0.00060;            // ~65m for parks/metro multi-snap (allows footpath setback)
       const isMulti = (snapMode==='all');
       const hosts = [];                   // list of host segment indices to seed from
       if(isMulti){
-        // All segments with any sample point within 50m
+        // All segments within 50m of ANY part of the POI — for a park polygon this means
+        // any road running along its perimeter (tested against the boundary vertices).
         segs.forEach((s,i)=>{
           const pts = s._proxPts || [s._mid];
+          let near=false;
           for(const sp of pts){
-            const dx=sp[0]-poiPt[0], dy=sp[1]-poiPt[1];
-            if(Math.sqrt(dx*dx+dy*dy) < MULTI_R){ hosts.push(i); break; }
+            for(const qp of snapPts){
+              const dx=sp[0]-qp[0], dy=sp[1]-qp[1];
+              if(Math.sqrt(dx*dx+dy*dy) < MULTI_R){ near=true; break; }
+            }
+            if(near) break;
           }
+          if(near) hosts.push(i);
         });
-        // Fallback: if nothing within 50m, snap to the single nearest within 220m
+        // Fallback: nothing within 50m of the boundary → snap the single nearest within 220m
         if(!hosts.length){
           let ni=-1, nd=Infinity;
-          segs.forEach((s,i)=>{ const pts=s._proxPts||[s._mid]; for(const sp of pts){ const dx=sp[0]-poiPt[0],dy=sp[1]-poiPt[1]; const d=Math.sqrt(dx*dx+dy*dy); if(d<nd&&d<SNAP_R){nd=d;ni=i;} } });
+          segs.forEach((s,i)=>{ const pts=s._proxPts||[s._mid]; for(const sp of pts){ for(const qp of snapPts){ const dx=sp[0]-qp[0],dy=sp[1]-qp[1]; const d=Math.sqrt(dx*dx+dy*dy); if(d<nd&&d<SNAP_R){nd=d;ni=i;} } } });
           if(ni>=0) hosts.push(ni);
         }
       }else{
-        // Single closest road within 220m
-        let ni=-1, nd=Infinity;
-        segs.forEach((s,i)=>{ const pts=s._proxPts||[s._mid]; for(const sp of pts){ const dx=sp[0]-poiPt[0],dy=sp[1]-poiPt[1]; const d=Math.sqrt(dx*dx+dy*dy); if(d<nd&&d<SNAP_R){nd=d;ni=i;} } });
+        // Single closest road within 220m, BIASED TOWARD CORE.
+        // Core segments are the fine-grained roads we actually grade; buffer segments are
+        // coarse. A POI sitting on a core road must attach to that core road, not a nearby
+        // coarse buffer road whose midpoint happens to be closer. So we find the nearest
+        // CORE segment and the nearest overall; if a core segment is within the snap radius,
+        // prefer it (unless a buffer segment is dramatically closer — >2× nearer).
+        let niCore=-1, ndCore=Infinity, niAny=-1, ndAny=Infinity;
+        segs.forEach((s,i)=>{
+          const pts=s._proxPts||[s._mid];
+          for(const sp of pts){
+            for(const qp of snapPts){
+              const dx=sp[0]-qp[0],dy=sp[1]-qp[1];
+              const d=Math.sqrt(dx*dx+dy*dy);
+              if(d<SNAP_R){
+                if(d<ndAny){ndAny=d;niAny=i;}
+                if(s._inStudy && d<ndCore){ndCore=d;niCore=i;}
+              }
+            }
+          }
+        });
+        // Prefer the core host if one is in range and not absurdly far vs the nearest road
+        let ni = -1;
+        if(niCore>=0 && ndCore <= ndAny*2.0) ni = niCore;
+        else if(niAny>=0) ni = niAny;
         if(ni>=0) hosts.push(ni);
       }
       if(!hosts.length){ _failed++; return; }
       _snapped++;
+      if(segs[hosts[0]]._inStudy) _coreHost++; else _bufHost++;
 
       // Step 2: PROPAGATE from each host segment through the network.
       //   accessLen = distance of FULL pull (score 1); radius = decay tail to zero.
@@ -2056,7 +2118,7 @@ function computeProximity(segs,graph,attConfigs){
         }
       }
     });
-    if(typeof dbg==='function') dbg('Proximity "'+name+'": '+_snapped+' snapped, '+_failed+' failed (access '+accessLen+'m, radius '+radius+'m)','OK');
+    if(typeof dbg==='function') dbg('Proximity "'+name+'": '+_snapped+' snapped ('+_coreHost+' core-host, '+_bufHost+' buffer-host), '+_failed+' failed','OK');
   });
 
   // Robust normalisation — over CORE segments only. Using the single MAX makes one
@@ -2274,9 +2336,10 @@ function heatColor(val) {
 function proxColor(val) {
   const v = Math.max(0, Math.min(1, val));
   if(v < 0.01) return '#2a2a2a';
-  const r = Math.round(80 + v*175);
-  const g = Math.round(60 + v*90);
-  const b = Math.round(20);
+  // Dark → bright green: low proximity = dim green, high = vivid green
+  const r = Math.round(30 + v*40);    // stays low (keeps it green, not yellow)
+  const g = Math.round(70 + v*150);   // ramps up strongly → bright green at high
+  const b = Math.round(30 + v*30);
   return `rgb(${r},${g},${b})`;
 }
 
@@ -2427,7 +2490,7 @@ function showScoreLayer(which){
   const btn=document.getElementById('sl-'+which); if(btn) btn.classList.add('on');
   // Hide POI icons while inspecting a score layer so streets are readable
   // (restore them when returning to the composite PWN view)
-  if(which==='final'){ restorePOIMarkers(); } else { hidePOIMarkersTemporarily(); }
+  if(which==='final' || which==='px'){ restorePOIMarkers(); } else { hidePOIMarkersTemporarily(); }
 
   // Map each layer to its score field + colouring
   const layers = {
@@ -2468,17 +2531,19 @@ function showScoreLayer(which){
   const mean = vals.reduce((a,b)=>a+b,0)/Math.max(1,vals.length);
   const box = document.getElementById('sl-stats');
   box.style.display='block';
+  const scoredCount = vals.filter(v=>v>0).length;
+  const coverage = which==='px' ? '<br><span style="color:#777">'+scoredCount+' of '+vals.length+' core roads in proximity ('+Math.round(100*scoredCount/Math.max(1,vals.length))+'%)</span>' : '';
   box.innerHTML =
     '<div style="color:#c8a96e;font-weight:700;margin-bottom:3px">'+LY.label+'</div>'+
     '<div style="color:#888;margin-bottom:4px">'+LY.desc+'</div>'+
     (which==='final' ? 'Coloured by PWN tier' :
-      'min '+mn.toFixed(3)+'  ·  mean '+mean.toFixed(3)+'  ·  max '+mx.toFixed(3));
+      'min '+mn.toFixed(3)+'  ·  mean '+mean.toFixed(3)+'  ·  max '+mx.toFixed(3)+coverage);
   // Update the bottom-right legend to match the active layer
   if(which==='final'){
     setLegendMode('final');
   }else{
     const grad = (which==='px')
-      ? 'linear-gradient(90deg,#3a3a3a,#6b5a3a,#9c7e3a,#c8a96e,#f0d890)'   // proximity: grey→gold
+      ? 'linear-gradient(90deg,#2a2a2a,#2e5a2e,#3a8a3a,#46c846,#5cff5c)'   // proximity: dark→green
       : 'linear-gradient(90deg,#0040ff,#00b4c8,#64ff00,#ffc800,#ff0000)';  // SS: blue→red
     setLegendMode(which, LY.label, grad, 'min '+mn.toFixed(2)+' · mean '+mean.toFixed(2)+' · max '+mx.toFixed(2));
   }
