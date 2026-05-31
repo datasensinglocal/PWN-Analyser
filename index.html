@@ -393,6 +393,12 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
     <div class="leg-row" id="leg-pwn4"><div class="leg-line" style="background:#1565C0"></div>PWN 4 — Enclave</div>
     <div class="leg-row conn-row" id="leg-conn" style="display:none"><div class="leg-line" style="background:#7aca7a;border-top:2px dashed #7aca7a;height:0"></div>Connector</div>
     <div class="leg-row" id="leg-corridor" style="display:none"><div class="leg-line" style="background:#c8a96e;border-top:2px dashed #c8a96e;height:0"></div>Attractor corridor (out-of-area pull)</div>
+    <div id="leg-score" style="display:none">
+      <div class="leg-title" id="leg-score-title">Score</div>
+      <div style="height:10px;border-radius:3px;margin:4px 0 3px;background:linear-gradient(90deg,#0040ff,#00b4c8,#64ff00,#ffc800,#ff0000)"></div>
+      <div style="display:flex;justify-content:space-between;font-size:9px;color:#999"><span>low</span><span id="leg-score-mid"></span><span>high</span></div>
+      <div id="leg-score-stats" style="font-size:9px;color:#888;font-family:monospace;margin-top:3px"></div>
+    </div>
   </div>
   <div class="bl" id="bl">
     <div class="bl-row"><div class="bl-line" style="background:#D0021B"></div>Study Area</div>
@@ -424,7 +430,7 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
     </div>
     <div id="debug-body" style="overflow-y:auto;padding:8px 10px;white-space:pre-wrap;line-height:1.5;flex:1"></div>
   </div>
-  <button id="debug-toggle" onclick="toggleDebug()" style="position:absolute;bottom:95px;left:10px;z-index:2000;background:#c8a96e;color:#0d0d0d;border:2px solid #fff;border-radius:6px;padding:10px 16px;font-family:monospace;font-size:13px;font-weight:700;cursor:pointer;letter-spacing:.05em;box-shadow:0 2px 16px rgba(0,0,0,.6)">⚉ DEBUG LOG</button>
+  <button id="debug-toggle" onclick="toggleDebug()" style="position:absolute;bottom:165px;left:14px;z-index:2000;background:rgba(200,169,110,.92);color:#0d0d0d;border:1px solid #0d0d0d;border-radius:5px;padding:5px 10px;font-family:monospace;font-size:10px;font-weight:700;cursor:pointer;letter-spacing:.03em;box-shadow:0 2px 16px rgba(0,0,0,.6)">⚉ DEBUG</button>
   <div class="prog-overlay" id="prog-overlay">
     <div class="prog-box">
       <div class="prog-title">Running Analysis</div>
@@ -506,10 +512,10 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
 const ATT_COLORS=['#E87722','#1565C0','#2E7D32','#6A0DAD','#c84a8a','#1a9a7a','#888','#c8a96e'];
 let cities=[],activeCity=null;
 let atts=[
-  {name:'Parks',        color:ATT_COLORS[2],data:null,count:0,mode:'catchment',accessLen:100,radius:400,icon:'🌳'},
-  {name:'Schools',      color:ATT_COLORS[0],data:null,count:0,mode:'corridor', accessLen:80, radius:200,icon:'🏫'},
-  {name:'Bus Stops',    color:ATT_COLORS[1],data:null,count:0,mode:'direct',   accessLen:50, radius:80, icon:'🚌'},
-  {name:'Metro Stations',color:ATT_COLORS[3],data:null,count:0,mode:'catchment',accessLen:150,radius:500,icon:'🚇'}
+  {name:'Parks',        color:ATT_COLORS[2],data:null,count:0,mode:'catchment',accessLen:100,radius:100,icon:'🌳'},
+  {name:'Schools',      color:ATT_COLORS[0],data:null,count:0,mode:'catchment',accessLen:200,radius:0,  icon:'🏫'},
+  {name:'Bus Stops',    color:ATT_COLORS[1],data:null,count:0,mode:'catchment',accessLen:100,radius:0,  icon:'🚌'},
+  {name:'Metro Stations',color:ATT_COLORS[3],data:null,count:0,mode:'catchment',accessLen:100,radius:500,icon:'🚇'}
 ];
 let poiMarkersVisible=true;   // master visual toggle for POI icons
 let poiMarkerLayers={};        // separate from analysis attLayers — purely visual
@@ -1028,7 +1034,18 @@ function loadCityFolder(input){
     const name = prettyTypeName(file.name);
     const color = POI_PALETTE[k % POI_PALETTE.length];
     const idx = atts.length;
-    atts.push({ name, color, data:null, count:0, mode:'catchment', accessLen:100, radius:400, icon:'📍' });
+    // Default reach by type name:
+    //  - Metro: 500m catchment   - Parks: 100m catchment
+    //  - everything else: snap-only (no influence radius) until the user sets one
+    const lname = name.toLowerCase();
+    // Access length applies even with no influence radius (radius:0 = no decay tail).
+    // Schools: 200m access. Everything else: 100m access. Metro & Parks also get a radius.
+    let cfg;
+    if(/metro/.test(lname))        cfg = { mode:'catchment', accessLen:100, radius:500 };
+    else if(/park/.test(lname))    cfg = { mode:'catchment', accessLen:100, radius:100 };
+    else if(/school/.test(lname))  cfg = { mode:'catchment', accessLen:200, radius:0   };
+    else                           cfg = { mode:'catchment', accessLen:100, radius:0   };
+    atts.push({ name, color, data:null, count:0, mode:cfg.mode, accessLen:cfg.accessLen, radius:cfg.radius, icon:'📍' });
     parseFile(file,(err,gj)=>{
       if(err){ showToast(name+': '+err); done(); return; }
       atts[idx].data = gj;
@@ -1986,8 +2003,13 @@ function computeProximity(segs,graph,attConfigs){
           }
         });
       }else{
-        // Corridor or Catchment — BFS/Dijkstra on metric distance from host
-        const maxR=mode==='corridor'?radius:radius;
+        // Catchment — BFS/Dijkstra on metric distance from host.
+        // Two independent parameters:
+        //   accessLen = distance over which the POI exerts FULL pull (score = 1)
+        //   radius    = distance over which pull DECAYS from full to zero (the tail)
+        // If radius <= accessLen there is no decay tail: full pull out to accessLen, then stop.
+        // Propagation reaches the larger of the two so accessLen works even with radius = 0.
+        const reach = Math.max(accessLen, radius);
         const mDist=new Float32Array(n).fill(Infinity);
         mDist[nearestIdx]=0;
         const pq=new Heap();pq.push({i:nearestIdx,a:0,m:0});
@@ -1995,14 +2017,21 @@ function computeProximity(segs,graph,attConfigs){
           const{i,m}=pq.pop();
           if(m>mDist[i])continue;
           // Score this segment
-          const score=m<=accessLen?1:Math.max(0,1-(m-accessLen)/(radius-accessLen+1));
+          let score;
+          if(m<=accessLen){
+            score=1;                                   // full-strength access zone
+          }else if(radius>accessLen){
+            score=Math.max(0,1-(m-accessLen)/(radius-accessLen)); // decay tail
+          }else{
+            score=0;                                   // no tail beyond access length
+          }
           if(score>0){
             segs[i]._pxRaw+=score;
             segs[i]._pxDet[name]=(segs[i]._pxDet[name]||0)+score;
           }
           for(const{to,met}of(graph[i]||[])){
             const nm=m+met;
-            if(nm<=maxR&&nm<mDist[to]){mDist[to]=nm;pq.push({i:to,a:nm,m:nm});}
+            if(nm<=reach&&nm<mDist[to]){mDist[to]=nm;pq.push({i:to,a:nm,m:nm});}
           }
         }
       }
@@ -2324,6 +2353,30 @@ function restorePOIMarkers(){
   Object.entries(poiMarkerLayers).forEach(([i,L])=>{ if(L && poiTypeVis[i]!==false) L.addTo(map); });
 }
 
+function setLegendMode(which, label, gradient, statsText){
+  // Toggle between PWN-grade legend and a score heat-scale legend
+  const gradeRows = ['leg-pwn1','leg-pwn2','leg-pwn3','leg-pwn4','leg-corridor'];
+  const scoreBox = document.getElementById('leg-score');
+  const title = document.querySelector('#legend .leg-title');
+  if(which==='final' || !which){
+    // Show PWN grades
+    gradeRows.forEach(id=>{ const el=document.getElementById(id); if(el && id!=='leg-corridor' && id!=='leg-conn') el.style.display='flex'; });
+    if(title) title.style.display='block';
+    if(scoreBox) scoreBox.style.display='none';
+  }else{
+    // Show score heat scale
+    gradeRows.forEach(id=>{ const el=document.getElementById(id); if(el) el.style.display='none'; });
+    if(title) title.style.display='none';
+    if(scoreBox){
+      scoreBox.style.display='block';
+      document.getElementById('leg-score-title').textContent=label;
+      scoreBox.querySelector('div[style*="linear-gradient"]').style.background=gradient;
+      document.getElementById('leg-score-stats').textContent=statsText||'';
+    }
+  }
+  document.getElementById('legend').style.display='block';
+}
+
 function showScoreLayer(which){
   if(typeof dbg==='function') dbg('Score layer clicked: '+which+' (segments: '+(segments?segments.length:0)+')','STAGE');
   if(!segments || !segments.length){ showToast('Run an analysis first'); if(typeof dbg==='function') dbg('No segments — run analysis first','ERR'); return; }
@@ -2335,6 +2388,7 @@ function showScoreLayer(which){
     document.getElementById('sl-stats').style.display='none';
     renderSegs(segments); // back to final PWN
     restorePOIMarkers();   // bring icons back
+    setLegendMode('final');
     showToast('Showing composite PWN grades');
     return;
   }
@@ -2390,6 +2444,15 @@ function showScoreLayer(which){
     '<div style="color:#888;margin-bottom:4px">'+LY.desc+'</div>'+
     (which==='final' ? 'Coloured by PWN tier' :
       'min '+mn.toFixed(3)+'  ·  mean '+mean.toFixed(3)+'  ·  max '+mx.toFixed(3));
+  // Update the bottom-right legend to match the active layer
+  if(which==='final'){
+    setLegendMode('final');
+  }else{
+    const grad = (which==='px')
+      ? 'linear-gradient(90deg,#3a3a3a,#6b5a3a,#9c7e3a,#c8a96e,#f0d890)'   // proximity: grey→gold
+      : 'linear-gradient(90deg,#0040ff,#00b4c8,#64ff00,#ffc800,#ff0000)';  // SS: blue→red
+    setLegendMode(which, LY.label, grad, 'min '+mn.toFixed(2)+' · mean '+mean.toFixed(2)+' · max '+mx.toFixed(2));
+  }
   showToast('Showing: '+LY.label);
 }
 
