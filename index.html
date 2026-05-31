@@ -2342,8 +2342,8 @@ function showScoreLayer(which){
     px:    { field:'_px',   color:proxColor, label:'POI Proximity', desc:'Combined destination pull from all attractors' },
     final: { field:'_final',color:null,      label:'Composite PWN', desc:'Final blended score → PWN tiers' }
   };
-  const L = layers[which];
-  if(!L) return;
+  const LY = layers[which];
+  if(!LY) return;
 
   // For 'final', just render the PWN grades (coloured by tier)
   if(which==='final'){
@@ -2354,9 +2354,9 @@ function showScoreLayer(which){
     segLayer = L.geoJSON(turf.featureCollection(segments), {
       style: f => {
         // f IS the segment object (turf feature carries the score fields directly)
-        const v = (f[L.field] != null ? f[L.field] : 0);
+        const v = (f[LY.field] != null ? f[LY.field] : 0);
         drawn++;
-        return { color: L.color(v), weight: 2.5 + v*5, opacity: 0.95 };
+        return { color: LY.color(v), weight: 2.5 + v*5, opacity: 0.95 };
       },
       onEachFeature: (feature, layer) => {
         layer.on('click', () => showInfo(feature));
@@ -2367,17 +2367,17 @@ function showScoreLayer(which){
   }
 
   // Stats summary
-  const vals = segments.map(s => s[L.field]||0).filter(v=>!isNaN(v));
+  const vals = segments.map(s => s[LY.field]||0).filter(v=>!isNaN(v));
   const mn = Math.min(...vals), mx = Math.max(...vals);
   const mean = vals.reduce((a,b)=>a+b,0)/Math.max(1,vals.length);
   const box = document.getElementById('sl-stats');
   box.style.display='block';
   box.innerHTML =
-    '<div style="color:#c8a96e;font-weight:700;margin-bottom:3px">'+L.label+'</div>'+
-    '<div style="color:#888;margin-bottom:4px">'+L.desc+'</div>'+
+    '<div style="color:#c8a96e;font-weight:700;margin-bottom:3px">'+LY.label+'</div>'+
+    '<div style="color:#888;margin-bottom:4px">'+LY.desc+'</div>'+
     (which==='final' ? 'Coloured by PWN tier' :
       'min '+mn.toFixed(3)+'  ·  mean '+mean.toFixed(3)+'  ·  max '+mx.toFixed(3));
-  showToast('Showing: '+L.label);
+  showToast('Showing: '+LY.label);
 }
 
 async function runAnimatedReveal(segs, sGraph, attConfigs, ssW, proxW, p1t, p2t, p3t, wN) {
