@@ -512,10 +512,10 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
 const ATT_COLORS=['#E87722','#1565C0','#2E7D32','#6A0DAD','#c84a8a','#1a9a7a','#888','#c8a96e'];
 let cities=[],activeCity=null;
 let atts=[
-  {name:'Parks',        color:ATT_COLORS[2],data:null,count:0,mode:'catchment',accessLen:100,radius:100,icon:'🌳'},
-  {name:'Schools',      color:ATT_COLORS[0],data:null,count:0,mode:'catchment',accessLen:200,radius:0,  icon:'🏫'},
-  {name:'Bus Stops',    color:ATT_COLORS[1],data:null,count:0,mode:'catchment',accessLen:100,radius:0,  icon:'🚌'},
-  {name:'Metro Stations',color:ATT_COLORS[3],data:null,count:0,mode:'catchment',accessLen:100,radius:500,icon:'🚇'}
+  {name:'Parks',        color:ATT_COLORS[2],data:null,count:0,mode:'catchment',accessLen:100,radius:100,icon:'🌳',snapMode:'all'},
+  {name:'Schools',      color:ATT_COLORS[0],data:null,count:0,mode:'catchment',accessLen:200,radius:0,  icon:'🏫',snapMode:'single'},
+  {name:'Bus Stops',    color:ATT_COLORS[1],data:null,count:0,mode:'catchment',accessLen:100,radius:0,  icon:'🚌',snapMode:'single'},
+  {name:'Metro Stations',color:ATT_COLORS[3],data:null,count:0,mode:'catchment',accessLen:100,radius:500,icon:'🚇',snapMode:'all'}
 ];
 let poiMarkersVisible=true;   // master visual toggle for POI icons
 let poiMarkerLayers={};        // separate from analysis attLayers — purely visual
@@ -1057,11 +1057,12 @@ function loadCityFolder(input){
     // Access length applies even with no influence radius (radius:0 = no decay tail).
     // Schools: 200m access. Everything else: 100m access. Metro & Parks also get a radius.
     let cfg;
-    if(/metro/.test(lname))        cfg = { mode:'catchment', accessLen:100, radius:500 };
-    else if(/park/.test(lname))    cfg = { mode:'catchment', accessLen:100, radius:100 };
-    else if(/school/.test(lname))  cfg = { mode:'catchment', accessLen:200, radius:0   };
-    else                           cfg = { mode:'catchment', accessLen:100, radius:0   };
-    atts.push({ name, color, data:null, count:0, mode:cfg.mode, accessLen:cfg.accessLen, radius:cfg.radius, icon:'📍' });
+    if(/metro/.test(lname))        cfg = { mode:'catchment', accessLen:100, radius:500, snapMode:'all' };
+    else if(/park/.test(lname))    cfg = { mode:'catchment', accessLen:100, radius:100, snapMode:'all' };
+    else if(/playground/.test(lname)) cfg = { mode:'catchment', accessLen:100, radius:100, snapMode:'all' };
+    else if(/school/.test(lname))  cfg = { mode:'catchment', accessLen:200, radius:0,   snapMode:'single' };
+    else                           cfg = { mode:'catchment', accessLen:100, radius:0,   snapMode:'single' };
+    atts.push({ name, color, data:null, count:0, mode:cfg.mode, accessLen:cfg.accessLen, radius:cfg.radius, icon:'📍', snapMode:cfg.snapMode||'single' });
     parseFile(file,(err,gj)=>{
       if(err){ showToast(name+': '+err); done(); return; }
       atts[idx].data = gj;
@@ -1190,6 +1191,13 @@ function renderAtts(){
         <div class="att-cfg-row">
           <span class="att-cfg-lbl">Influence radius (m)</span>
           <input type="number" value="${a.radius}" min="50" max="1000" step="25" style="width:64px" oninput="atts[${i}].radius=+this.value"/>
+        </div>
+        <div class="att-cfg-row">
+          <span class="att-cfg-lbl">Access roads</span>
+          <select class="mode-sel" onchange="atts[${i}].snapMode=this.value">
+            <option value="single" ${(a.snapMode||'single')==='single'?'selected':''}>Single (nearest road)</option>
+            <option value="all"    ${a.snapMode==='all'?'selected':''}>All directions (≤50m)</option>
+          </select>
         </div>
       </div>
     </div>`).join('');
@@ -1980,7 +1988,7 @@ function computeProximity(segs,graph,attConfigs){
 
   attConfigs.forEach(cfg=>{
     if(!cfg.data||!cfg.data.features)return;
-    const{name,mode,accessLen,radius,vis}=cfg;
+    const{name,mode,accessLen,radius,vis,snapMode}=cfg;
     if(vis===false)return;
     let _snapped=0, _failed=0;
 
@@ -1992,65 +2000,59 @@ function computeProximity(segs,graph,attConfigs){
         else poiPt=turf.centroid(f).geometry.coordinates;
       }catch(ex){return;}
 
-      // Step 1: Find nearest segment (snap) within 200m Euclidean
-      // Uses _proxPts for long segments so snapping is accurate anywhere along the segment
-      const SNAP_R=0.002; // ~200m in degrees
-      let nearestIdx=-1,nearestD=Infinity;
-      segs.forEach((s,i)=>{
-        const pts = s._proxPts || [s._mid];
-        for(const sp of pts){
-          const dx=sp[0]-poiPt[0],dy=sp[1]-poiPt[1];
-          const d=Math.sqrt(dx*dx+dy*dy);
-          if(d<nearestD&&d<SNAP_R){nearestD=d;nearestIdx=i;}
-        }
-      });
-      if(nearestIdx<0){ _failed++; return; }
-      _snapped++;
-
-      // Step 2: Propagate from host segment through network
-      if(mode==='direct'){
-        // Host + immediate neighbours only
-        segs[nearestIdx]._pxRaw+=1;
-        segs[nearestIdx]._pxDet[name]=(segs[nearestIdx]._pxDet[name]||0)+1;
-        (graph[nearestIdx]||[]).forEach(({to})=>{
-          const d=segs[nearestIdx]._len||10;
-          if(d<=accessLen){
-            const score=1-(d/Math.max(accessLen,1));
-            segs[to]._pxRaw+=score;
-            segs[to]._pxDet[name]=(segs[to]._pxDet[name]||0)+score;
+      // Step 1: SNAP — find host segment(s).
+      // Most POIs snap to the SINGLE closest road within 220m (a school fronts one street).
+      // Parks & Metro Stations are large features bordered by several roads, so they snap
+      // to ALL roads within 50m (every adjacent road registers the pull, not just one).
+      const SNAP_R = 0.002;               // ~220m search ceiling for nearest-single snap
+      const MULTI_R = 0.00045;            // ~50m for parks/metro multi-snap
+      const isMulti = (snapMode==='all');
+      const hosts = [];                   // list of host segment indices to seed from
+      if(isMulti){
+        // All segments with any sample point within 50m
+        segs.forEach((s,i)=>{
+          const pts = s._proxPts || [s._mid];
+          for(const sp of pts){
+            const dx=sp[0]-poiPt[0], dy=sp[1]-poiPt[1];
+            if(Math.sqrt(dx*dx+dy*dy) < MULTI_R){ hosts.push(i); break; }
           }
         });
+        // Fallback: if nothing within 50m, snap to the single nearest within 220m
+        if(!hosts.length){
+          let ni=-1, nd=Infinity;
+          segs.forEach((s,i)=>{ const pts=s._proxPts||[s._mid]; for(const sp of pts){ const dx=sp[0]-poiPt[0],dy=sp[1]-poiPt[1]; const d=Math.sqrt(dx*dx+dy*dy); if(d<nd&&d<SNAP_R){nd=d;ni=i;} } });
+          if(ni>=0) hosts.push(ni);
+        }
       }else{
-        // Catchment — BFS/Dijkstra on metric distance from host.
-        // Two independent parameters:
-        //   accessLen = distance over which the POI exerts FULL pull (score = 1)
-        //   radius    = distance over which pull DECAYS from full to zero (the tail)
-        // If radius <= accessLen there is no decay tail: full pull out to accessLen, then stop.
-        // Propagation reaches the larger of the two so accessLen works even with radius = 0.
-        const reach = Math.max(accessLen, radius);
-        const mDist=new Float32Array(n).fill(Infinity);
-        mDist[nearestIdx]=0;
-        const pq=new Heap();pq.push({i:nearestIdx,a:0,m:0});
-        while(!pq.empty()){
-          const{i,m}=pq.pop();
-          if(m>mDist[i])continue;
-          // Score this segment
-          let score;
-          if(m<=accessLen){
-            score=1;                                   // full-strength access zone
-          }else if(radius>accessLen){
-            score=Math.max(0,1-(m-accessLen)/(radius-accessLen)); // decay tail
-          }else{
-            score=0;                                   // no tail beyond access length
-          }
-          if(score>0){
-            segs[i]._pxRaw+=score;
-            segs[i]._pxDet[name]=(segs[i]._pxDet[name]||0)+score;
-          }
-          for(const{to,met}of(graph[i]||[])){
-            const nm=m+met;
-            if(nm<=reach&&nm<mDist[to]){mDist[to]=nm;pq.push({i:to,a:nm,m:nm});}
-          }
+        // Single closest road within 220m
+        let ni=-1, nd=Infinity;
+        segs.forEach((s,i)=>{ const pts=s._proxPts||[s._mid]; for(const sp of pts){ const dx=sp[0]-poiPt[0],dy=sp[1]-poiPt[1]; const d=Math.sqrt(dx*dx+dy*dy); if(d<nd&&d<SNAP_R){nd=d;ni=i;} } });
+        if(ni>=0) hosts.push(ni);
+      }
+      if(!hosts.length){ _failed++; return; }
+      _snapped++;
+
+      // Step 2: PROPAGATE from each host segment through the network.
+      //   accessLen = distance of FULL pull (score 1); radius = decay tail to zero.
+      //   reach = max(accessLen, radius) so access length works even with radius 0.
+      const reach = Math.max(accessLen, radius, 1);
+      const mDist=new Float32Array(n).fill(Infinity);
+      const pq=new Heap();
+      for(const h of hosts){ mDist[h]=0; pq.push({i:h,a:0,m:0}); }
+      while(!pq.empty()){
+        const{i,m}=pq.pop();
+        if(m>mDist[i])continue;
+        let score;
+        if(m<=accessLen) score=1;
+        else if(radius>accessLen) score=Math.max(0,1-(m-accessLen)/(radius-accessLen));
+        else score=0;
+        if(score>0){
+          segs[i]._pxRaw+=score;
+          segs[i]._pxDet[name]=(segs[i]._pxDet[name]||0)+score;
+        }
+        for(const{to,met}of(graph[i]||[])){
+          const nm=m+met;
+          if(nm<=reach&&nm<mDist[to]){mDist[to]=nm;pq.push({i:to,a:nm,m:nm});}
         }
       }
     });
@@ -2062,6 +2064,14 @@ function computeProximity(segs,graph,attConfigs){
   // to near-zero, giving a flat one-colour map. Instead normalise to the 95th
   // percentile of non-zero scores so the bulk of the distribution spreads across the
   // colour range, and clamp the top 5% to 1.0.
+  // DIAGNOSTIC: how many segments actually got scored?
+  if(typeof dbg==='function'){
+    const allScored = segs.filter(s=>s._pxRaw>0).length;
+    const coreScored = segs.filter(s=>s._inStudy && s._pxRaw>0).length;
+    const coreTotal = segs.filter(s=>s._inStudy).length;
+    const maxRaw = Math.max(0,...segs.map(s=>s._pxRaw));
+    dbg('Proximity raw: '+allScored+'/'+segs.length+' segs scored ('+coreScored+'/'+coreTotal+' core), maxRaw='+maxRaw.toFixed(1),'OK');
+  }
   const coreForNorm = segs.filter(s=>s._inStudy!==false);
   const nonZero = coreForNorm.map(s=>s._pxRaw).filter(v=>v>0).sort((a,b)=>a-b);
   let ceil = 1;
