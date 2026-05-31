@@ -395,8 +395,8 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
     <div class="leg-row" id="leg-corridor" style="display:none"><div class="leg-line" style="background:#c8a96e;border-top:2px dashed #c8a96e;height:0"></div>Attractor corridor (out-of-area pull)</div>
     <div id="leg-score" style="display:none">
       <div class="leg-title" id="leg-score-title">Score</div>
-      <div style="height:10px;border-radius:3px;margin:4px 0 3px;background:linear-gradient(90deg,#0040ff,#00b4c8,#64ff00,#ffc800,#ff0000)"></div>
-      <div style="display:flex;justify-content:space-between;font-size:9px;color:#999"><span>low</span><span id="leg-score-mid"></span><span>high</span></div>
+      <div id="leg-score-bar" style="height:10px;border-radius:3px;margin:4px 0 3px;background:linear-gradient(90deg,#0040ff,#00b4c8,#64ff00,#ffc800,#ff0000)"></div>
+      <div id="leg-score-lohi" style="display:flex;justify-content:space-between;font-size:9px;color:#999"><span>low</span><span id="leg-score-mid"></span><span>high</span></div>
       <div id="leg-score-stats" style="font-size:9px;color:#888;font-family:monospace;margin-top:3px"></div>
     </div>
   </div>
@@ -2141,7 +2141,15 @@ function computeProximity(segs,graph,attConfigs){
     const p95 = nonZero[Math.floor(nonZero.length*0.95)] || nonZero[nonZero.length-1];
     ceil = Math.max(1e-6, p95);
   }
-  segs.forEach(s=>{ s._px = Math.min(1, s._pxRaw/ceil); });
+  segs.forEach(s=>{
+    s._px = Math.min(1, s._pxRaw/ceil);
+    // Binary classification: a road is either IN the proximity network (serves at least
+    // one destination within its access length) or not. Single vs multiple count the same
+    // for now — type-weighting can refine this later. _pxTypes is kept for that future use.
+    const typeCount = Object.keys(s._pxDet||{}).length;
+    s._pxGrade = typeCount>0 ? 1 : 0;
+    s._pxTypes = typeCount;
+  });
   if(typeof dbg==='function'){
     const cv = coreForNorm.map(s=>s._px);
     const mean = cv.reduce((a,b)=>a+b,0)/Math.max(1,cv.length);
@@ -2155,7 +2163,9 @@ function computeProximity(segs,graph,attConfigs){
 function grade(segs,ssW,proxW,p1t,p2t,p3t,wN){
   segs.forEach(s=>{
     s._ss=s._coN*wN[0]+s._li8*wN[1]+s._ch*wN[2];
-    s._final=s._ss*ssW+s._px*proxW;
+    // Proximity enters the composite as a binary value: in the proximity network (1) or not (0).
+    const pxG = (s._pxGrade>=1 ? 1 : 0);
+    s._final=s._ss*ssW+pxG*proxW;
   });
   const sorted=[...segs].sort((a,b)=>b._final-a._final);
   const e1=Math.floor(sorted.length*p1t);
@@ -2333,6 +2343,11 @@ function heatColor(val) {
 }
 
 // POI proximity colour: grey (none) → warm gold → orange (high)
+function proxGradeColor(grade) {
+  // Binary: in the proximity network (serves ≥1 destination) → green, else dark
+  return grade>=1 ? '#22dd22' : '#2a2a2a';
+}
+
 function proxColor(val) {
   const v = Math.max(0, Math.min(1, val));
   // Single linear gradient: black (low) → bright green (high)
@@ -2442,6 +2457,29 @@ function restorePOIMarkers(){
   Object.entries(poiMarkerLayers).forEach(([i,L])=>{ if(L && poiTypeVis[i]!==false) L.addTo(map); });
 }
 
+function setLegendModeGrades(label){
+  // Discrete 3-grade legend for POI proximity
+  const gradeRows = ['leg-pwn1','leg-pwn2','leg-pwn3','leg-pwn4','leg-corridor'];
+  gradeRows.forEach(id=>{ const el=document.getElementById(id); if(el) el.style.display='none'; });
+  const title = document.querySelector('#legend .leg-title'); if(title) title.style.display='none';
+  const scoreBox = document.getElementById('leg-score');
+  if(scoreBox){
+    scoreBox.style.display='block';
+    document.getElementById('leg-score-title').textContent=label;
+    const bar = document.getElementById('leg-score-bar');
+    // Replace the gradient bar area with three discrete swatches
+    bar.style.background='transparent';
+    bar.innerHTML='<div style="display:flex;gap:3px;height:10px">'+
+      '<div style="flex:1;background:#666;border-radius:2px"></div>'+
+      '<div style="flex:1;background:#22dd22;border-radius:2px"></div></div>';
+    const midEl=document.getElementById('leg-score-mid'); if(midEl) midEl.textContent='';
+    const loHi=document.getElementById('leg-score-lohi');
+    if(loHi) loHi.innerHTML='<span>outside</span><span>proximity network</span>';
+    document.getElementById('leg-score-stats').textContent='';
+  }
+  document.getElementById('legend').style.display='block';
+}
+
 function setLegendMode(which, label, gradient, statsText){
   // Toggle between PWN-grade legend and a score heat-scale legend
   const gradeRows = ['leg-pwn1','leg-pwn2','leg-pwn3','leg-pwn4','leg-corridor'];
@@ -2459,7 +2497,10 @@ function setLegendMode(which, label, gradient, statsText){
     if(scoreBox){
       scoreBox.style.display='block';
       document.getElementById('leg-score-title').textContent=label;
-      scoreBox.querySelector('div[style*="linear-gradient"]').style.background=gradient;
+      const bar=document.getElementById('leg-score-bar');
+      bar.innerHTML=''; bar.style.background=gradient;        // restore solid gradient bar
+      const loHi=document.getElementById('leg-score-lohi');
+      if(loHi) loHi.innerHTML='<span>low</span><span id="leg-score-mid"></span><span>high</span>';
       document.getElementById('leg-score-stats').textContent=statsText||'';
     }
   }
@@ -2495,7 +2536,7 @@ function showScoreLayer(which){
     int:   { field:'_li8',  color:heatColor, label:'15-min Integration', desc:'Spatial centrality within a 15-min walk' },
     cho:   { field:'_ch',   color:heatColor, label:'15-min Choice', desc:'Through-movement within a 15-min walk' },
     ss:    { field:'_ss',   color:heatColor, label:'Space Syntax Composite', desc:'Weighted blend of connectivity + integration + choice' },
-    px:    { field:'_px',   color:proxColor, label:'POI Proximity', desc:'Combined destination pull from all attractors' },
+    px:    { field:'_pxGrade', color:proxGradeColor, label:'POI Proximity', desc:'In the proximity network (serves ≥1 destination) or not' },
     final: { field:'_final',color:null,      label:'Composite PWN', desc:'Final blended score → PWN tiers' }
   };
   const LY = layers[which];
@@ -2525,7 +2566,9 @@ function showScoreLayer(which){
         const raw = (f[LY.field] != null ? f[LY.field] : 0);
         const cv = colourVal(raw);
         drawn++;
-        return { color: LY.color(cv), weight: 2.5 + cv*5, opacity: 0.95 };
+        // POI proximity is a 0/1/2 grade — use fixed weights per grade, not cv*5
+        const wt = (which==='px') ? (raw>=2 ? 5.5 : raw>=1 ? 4 : 2) : (2.5 + cv*5);
+        return { color: LY.color(cv), weight: wt, opacity: 0.95 };
       },
       onEachFeature: (feature, layer) => {
         layer.on('click', () => showInfo(feature));
@@ -2536,20 +2579,27 @@ function showScoreLayer(which){
   }
   const box = document.getElementById('sl-stats');
   box.style.display='block';
-  const scoredCount = vals.filter(v=>v>0).length;
-  const coverage = which==='px' ? '<br><span style="color:#777">'+scoredCount+' of '+vals.length+' core roads in proximity ('+Math.round(100*scoredCount/Math.max(1,vals.length))+'%)</span>' : '';
+  let body;
+  if(which==='final'){
+    body = 'Coloured by PWN tier';
+  } else if(which==='px'){
+    const inNet=segments.filter(s=>(s._pxGrade||0)>=1).length;
+    const out=segments.length-inNet;
+    body = '<span style="color:#22dd22">■</span> proximity network: '+inNet+'<br>'+
+           '<span style="color:#666">■</span> outside: '+out;
+  } else {
+    body = 'min '+mn.toFixed(3)+'  ·  mean '+mean.toFixed(3)+'  ·  max '+mx.toFixed(3);
+  }
   box.innerHTML =
     '<div style="color:#c8a96e;font-weight:700;margin-bottom:3px">'+LY.label+'</div>'+
-    '<div style="color:#888;margin-bottom:4px">'+LY.desc+'</div>'+
-    (which==='final' ? 'Coloured by PWN tier' :
-      'min '+mn.toFixed(3)+'  ·  mean '+mean.toFixed(3)+'  ·  max '+mx.toFixed(3)+coverage);
+    '<div style="color:#888;margin-bottom:4px">'+LY.desc+'</div>'+ body;
   // Update the bottom-right legend to match the active layer
   if(which==='final'){
     setLegendMode('final');
+  }else if(which==='px'){
+    setLegendModeGrades(LY.label);
   }else{
-    const grad = (which==='px')
-      ? 'linear-gradient(90deg,#000000,#00e600)'                           // proximity: black→green
-      : 'linear-gradient(90deg,#0040ff,#00b4c8,#64ff00,#ffc800,#ff0000)';  // SS: blue→red
+    const grad = 'linear-gradient(90deg,#0040ff,#00b4c8,#64ff00,#ffc800,#ff0000)';  // SS: blue→red
     setLegendMode(which, LY.label, grad, 'min '+mn.toFixed(2)+' · mean '+mean.toFixed(2)+' · max '+mx.toFixed(2));
   }
   showToast('Showing: '+LY.label);
