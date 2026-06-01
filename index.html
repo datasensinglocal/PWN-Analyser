@@ -274,7 +274,7 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
     <div class="sb-eyebrow">Urban Mobility Analysis</div>
     <div class="sb-title">PWN Analyser</div>
     <div class="sb-sub">Priority Walking Network · Space Syntax + Trip Attractors</div>
-    <div class="sb-version" id="sb-version">v2.0 · 2026-06-01</div>
+    <div class="sb-version" id="sb-version">v2.2 · 2026-06-01</div>
   </div>
   <div class="sb-tabs">
     <button class="tab active" onclick="switchTab('data')">Data</button>
@@ -3532,7 +3532,21 @@ async function runAnalysis(){
   // the number of segments that directly intersect this segment (its graph degree).
   // This is deliberately local. The "how well-meshed in the wider network" question
   // is what INTEGRATION (the n-step measure) answers, so we don't conflate them here.
-  allSegs.forEach((s,i)=>{ s._co = sGraph[i]?sGraph[i].length:0; });
+  // Count ONLY core-to-core junctions for connectivity. The buffer network is kept coarse
+  // (whole roads, not junction-split), so buffer neighbours carry a false junction count that
+  // inflates the degree of edge roads. Integration & Choice still USE the buffer (they need it
+  // for reachable extent across the boundary) — but raw connectivity must not, since it is a
+  // pure junction count and coarse buffer roads have the wrong number of junctions.
+  allSegs.forEach((s,i)=>{
+    if(!sGraph[i]){ s._co=0; return; }
+    if(s._inStudy){
+      // core road: count only neighbours that are also core
+      let d=0; for(const e of sGraph[i]){ const nb=allSegs[e.to]; if(nb && nb._inStudy) d++; }
+      s._co = d;
+    } else {
+      s._co = sGraph[i].length; // buffer roads keep full degree (not graded/shown anyway)
+    }
+  });
   // Normalise over CORE only (buffer is coarse and would inflate the ceiling),
   // using the 95th-percentile degree so one unusually-branchy road doesn't compress
   // the scale — same normalisation rule used for integration, choice and proximity.
@@ -3547,6 +3561,37 @@ async function runAnalysis(){
   dbg('Calling computeSS...','STAGE');
   await computeSS(allSegs, allSegs, sGraph, sGraph, 38, 78, ssRadius);
   dbg('computeSS returned','OK');
+
+  // ── Edge-fade: gently down-weight roads near the study-area boundary ──
+  // A road's catchment within the analysis radius is truncated the closer it sits to the
+  // edge (part of its 'reachable world' falls outside the fine study network), which inflates
+  // edge connectivity and distorts integration/choice. We taper all three SS measures toward
+  // a floor across a band ~1 analysis-radius wide, so edge roads still count — just less.
+  try{
+    if(bounds.study && bounds.study.length>=3){
+      const ring=[...bounds.study, bounds.study[0]];
+      const edgeLine = turf.lineString(ring.map(c=>[c[0],c[1]]));
+      const bandKm = Math.max(0.3, (ssRadius||1250)/1000); // taper band ≈ one analysis radius
+      const FLOOR = 0.5; // edge roads keep at least 50% of their score (never zeroed)
+      let faded=0;
+      allSegs.forEach(s=>{
+        if(!s._inStudy) return;            // only fade study-core roads
+        const m=s._mid; if(!m) return;
+        let dKm;
+        try{ dKm = turf.pointToLineDistance(turf.point([m[0],m[1]]), edgeLine, {units:'kilometers'}); }
+        catch(e){ dKm = bandKm; }
+        // fade = FLOOR at the edge → 1.0 once we're a full band inside
+        const t = Math.max(0, Math.min(1, dKm/bandKm));
+        const fade = FLOOR + (1-FLOOR)*t;
+        if(fade < 0.999){
+          s._coN *= fade; s._li8 *= fade; s._ch *= fade;
+          s._edgeFade = fade; faded++;
+        } else { s._edgeFade = 1; }
+      });
+      if(typeof dbg==='function') dbg('Edge-fade applied to '+faded+' boundary roads (band '+bandKm.toFixed(2)+'km, floor '+FLOOR+')','OK');
+    }
+  }catch(ex){ if(typeof dbg==='function') dbg('Edge-fade skipped: '+ex.message,'WARN'); }
+
   setP(78,'Space Syntax complete','nain800',coreSegs.length+' core scored');await sleep(20);
 
   // Proximity — boundary-agnostic: all attractors snap to allSegs (incl. buffer)
