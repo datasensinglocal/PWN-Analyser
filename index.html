@@ -1198,13 +1198,14 @@ function addCity(){
 function setActive(i){
   activeCity=i;renderCities();
   const ok=activeCity!==null&&cities[activeCity];
-  document.getElementById('main-data').style.display=ok?'block':'none';
-  document.getElementById('no-city').style.display=ok?'none':'block';
+  const md=document.getElementById('main-data'); if(md) md.style.display=ok?'block':'none';
+  const nc=document.getElementById('no-city'); if(nc) nc.style.display=ok?'none':'block';
   if(ok&&cities[activeCity].network){
-    document.getElementById('net-zone').classList.add('loaded');
-    document.getElementById('net-t').className='uz-t ok';
+    const nz=document.getElementById('net-zone'); if(nz) nz.classList.add('loaded');
+    const nt=document.getElementById('net-t'); if(nt) nt.className='uz-t ok';
   }
   renderAtts();renderAttLayers();
+  if(typeof updateSteps==='function') updateSteps();
 }
 
 function removeCity(i,e){
@@ -1212,7 +1213,7 @@ function removeCity(i,e){
   activeCity=cities.length>0?Math.min(activeCity,cities.length-1):null;
   renderCities();
   if(activeCity!==null)setActive(activeCity);
-  else{document.getElementById('main-data').style.display='none';document.getElementById('no-city').style.display='block';}
+  else{const md=document.getElementById('main-data');if(md)md.style.display='none';const nc=document.getElementById('no-city');if(nc)nc.style.display='block';}
 }
 
 function renderCities(){
@@ -3378,7 +3379,7 @@ function saveSession(){
     s[sname] = session;
     setSessions(s);
     renderSessionList();
-    document.getElementById('session-select').value = sname;
+    const _ss=document.getElementById('session-select'); if(_ss) _ss.value = sname;
     showToast('Session "'+sname+'" saved');
   }catch(e){
     showToast('Storage full — try a smaller network or fewer attractors');
