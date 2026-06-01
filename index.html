@@ -263,6 +263,7 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
 .step-desc{display:none}
 .step-desc.show{display:block}
 
+.sb-version{font-size:9px;color:#555;font-family:monospace;letter-spacing:.04em;margin-top:3px}
 </style>
 </head>
 <body>
@@ -271,6 +272,7 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
     <div class="sb-eyebrow">Urban Mobility Analysis</div>
     <div class="sb-title">PWN Analyser</div>
     <div class="sb-sub">Priority Walking Network · Space Syntax + Trip Attractors</div>
+    <div class="sb-version" id="sb-version">v1.6 · 2026-06-01</div>
   </div>
   <div class="sb-tabs">
     <button class="tab active" onclick="switchTab('data')">Data</button>
@@ -466,7 +468,11 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
         <button class="map-btn study" id="study-btn" onclick="startDraw('study')" style="flex:1">Draw Study Area</button>
         <button class="map-btn bnd-reset" onclick="resetBoundary('study')" title="Reset study area" style="flex:0 0 auto;padding:0 9px">↺</button>
       </div>
-      <button class="map-btn" id="suggest-btn" onclick="toggleSuggestModule()" title="Show a 2 km² suggested module at the map centre" style="font-size:9px">Drop 2 km² Module</button>
+      <div style="display:flex;gap:5px;align-items:stretch">
+        <input type="file" id="study-bnd-file" accept=".geojson,.json,.kml" style="display:none" onchange="loadBoundaryFile(this,'study')"/>
+        <button class="map-btn" onclick="document.getElementById('study-bnd-file').click()" title="Upload a study-area.geojson or .kml boundary" style="flex:1;font-size:9px">⬆ Upload Boundary</button>
+        <button class="map-btn" id="suggest-btn" onclick="toggleSuggestModule()" title="Show a 2 km² suggested module at the map centre" style="flex:1;font-size:9px">Drop 2 km² Module</button>
+      </div>
       <div class="boundary-actions" id="study-actions" style="display:none">
         <button class="map-btn bnd-act" onclick="saveBoundary('study')" title="Save this boundary">Save</button>
       </div>
@@ -1009,6 +1015,52 @@ function updateBoundaryAreas(){
   }
 }
 
+function extractBoundaryRing(gj){
+  // Pull the first polygon's outer ring from a parsed GeoJSON as [[lon,lat],...].
+  // Accepts FeatureCollection / Feature / geometry; Polygon or MultiPolygon.
+  if(!gj) return null;
+  const geoms = [];
+  const pushGeom = g => { if(g) geoms.push(g); };
+  if(gj.type==='FeatureCollection') (gj.features||[]).forEach(f=>pushGeom(f.geometry));
+  else if(gj.type==='Feature') pushGeom(gj.geometry);
+  else pushGeom(gj);
+  for(const g of geoms){
+    if(!g) continue;
+    if(g.type==='Polygon' && g.coordinates && g.coordinates[0]) {
+      return g.coordinates[0].map(c=>[c[0],c[1]]);
+    }
+    if(g.type==='MultiPolygon' && g.coordinates && g.coordinates[0] && g.coordinates[0][0]) {
+      return g.coordinates[0][0].map(c=>[c[0],c[1]]);
+    }
+  }
+  // Fallback: a closed LineString can act as a boundary ring
+  for(const g of geoms){
+    if(g && g.type==='LineString' && g.coordinates && g.coordinates.length>=4) {
+      return g.coordinates.map(c=>[c[0],c[1]]);
+    }
+  }
+  return null;
+}
+
+function loadBoundaryFile(input, type){
+  const file = input.files[0]; if(!file) return;
+  parseFile(file,(err,gj)=>{
+    if(err){ showToast(err); return; }
+    let ring = extractBoundaryRing(gj);
+    if(!ring || ring.length<4){ showToast('No polygon boundary found in that file'); return; }
+    // Drop a duplicated closing vertex (stored format is open ring)
+    if(ring.length>1){
+      const a=ring[0], b=ring[ring.length-1];
+      if(a[0]===b[0] && a[1]===b[1]) ring = ring.slice(0,-1);
+    }
+    applyBoundary(type, ring);
+    // Fit the map to the uploaded boundary
+    try{ const ll=ring.map(c=>[c[1],c[0]]); map.fitBounds(L.polygon(ll).getBounds(),{padding:[40,40]}); }catch(ex){}
+    showToast((type==='study'?'Study area':'Global context')+' loaded from file — drag the nodes to edit');
+  });
+  input.value=''; // allow re-upload of same file
+}
+
 function applyBoundary(type, coordsLonLat){
   // coordsLonLat = [[lon,lat],...] stored format
   const col = getCol(type);
@@ -1123,7 +1175,11 @@ function loadCityFolder(input){
   const isNetwork = f => /^(network|roads?|road[-_]?network)\.(geojson|json|kml)$/i.test(f.name);
   const netFile = geoFiles.find(isNetwork);
   if(!netFile){ showToast('No "network" file found. Name the road file network.geojson'); return; }
-  const poiFiles = geoFiles.filter(f=>f!==netFile);
+  // Identify an optional study-area boundary file (study-area / study_area / studyarea / boundary)
+  const isStudyBoundary = f => /^(study[-_]?area|boundary|study[-_]?boundary)\.(geojson|json|kml)$/i.test(f.name);
+  const studyFile = geoFiles.find(isStudyBoundary);
+  // POIs are everything that is neither the network nor the study boundary
+  const poiFiles = geoFiles.filter(f=>f!==netFile && f!==studyFile);
 
   // Create / select the city
   let ci = cities.findIndex(c=>c.name===cityName);
@@ -1142,7 +1198,23 @@ function loadCityFolder(input){
     renderPOIToggleList();
     updateSteps();
     toggleDataPanel(true); // tidy: collapse the loaded-data list once the folder is in
-    showToast('Loaded '+cityName+': network + '+poiFiles.length+' POI types. Draw a study area to see attractors.');
+    // If the folder included a study-area boundary file, load it as the (editable) study area
+    if(studyFile){
+      parseFile(studyFile,(err,gj)=>{
+        if(err){ showToast('Study boundary: '+err); return; }
+        let ring = extractBoundaryRing(gj);
+        if(ring && ring.length>=4){
+          if(ring[0][0]===ring[ring.length-1][0] && ring[0][1]===ring[ring.length-1][1]) ring=ring.slice(0,-1);
+          applyBoundary('study', ring);
+          try{ const ll=ring.map(c=>[c[1],c[0]]); map.fitBounds(L.polygon(ll).getBounds(),{padding:[40,40]}); }catch(ex){}
+          showToast('Loaded '+cityName+': network + '+poiFiles.length+' POI types + study boundary (editable). ');
+        } else {
+          showToast('Loaded '+cityName+': network + '+poiFiles.length+' POI types. (study-area file had no polygon — draw one)');
+        }
+      });
+    } else {
+      showToast('Loaded '+cityName+': network + '+poiFiles.length+' POI types. Draw a study area to see attractors.');
+    }
   }};
 
   // Load network
@@ -2519,8 +2591,17 @@ function computeProximity(segs,graph,attConfigs){
    GRADING — 4 tiers
 ════════════════════════════════════════════════ */
 function grade(segs,ssW,proxW,p1t,p2t,p3t,wN){
+  // WEIGHTED-MAX composite (not a weighted average). Averaging three uncorrelated measures
+  // (a road strong on one is often weak on another) regresses everything to the mean and
+  // flattens the map. Instead, each road takes its STRONGEST Space Syntax quality: a street
+  // is a walking priority if it's important for ANY structural reason (great through-route OR
+  // central hub OR local connector). The sub-weights scale each measure relative to the
+  // largest weight, so the most-important measure (integration) can reach 1.0 while the
+  // downweighted one (connectivity) is capped proportionally — the weighting still matters.
+  const wMax = Math.max(wN[0], wN[1], wN[2], 1e-6);
+  const sc = [wN[0]/wMax, wN[1]/wMax, wN[2]/wMax];
   segs.forEach(s=>{
-    s._ss=s._coN*wN[0]+s._li8*wN[1]+s._ch*wN[2];
+    s._ss = Math.max(sc[0]*s._coN, sc[1]*s._li8, sc[2]*s._ch);
     // Proximity enters the composite as a binary value: in the proximity network (1) or not (0).
     const pxG = (s._pxGrade>=1 ? 1 : 0);
     s._final=s._ss*ssW+pxG*proxW;
@@ -2908,7 +2989,7 @@ function showScoreLayer(which){
     conn:  { field:'_coN',  color:heatColor, label:'Connectivity', desc:'Direct junction connections (normalised)' },
     int:   { field:'_li8',  color:heatColor, label:'15-min Integration', desc:'Spatial centrality within a 15-min walk' },
     cho:   { field:'_ch',   color:heatColor, label:'15-min Choice', desc:'Through-movement within a 15-min walk' },
-    ss:    { field:'_ss',   color:heatColor, label:'Space Syntax Composite', desc:'Weighted blend of connectivity + integration + choice' },
+    ss:    { field:'_ss',   color:heatColor, label:'Space Syntax Composite', desc:'Strongest of connectivity / integration / choice (weighted-max)' },
     px:    { field:'_pxGrade', color:proxGradeColor, label:'POI Proximity', desc:'In the proximity network (serves ≥1 destination) or not' },
     final: { field:'_final',color:null,      label:'Composite PWN', desc:'Final blended score → PWN tiers' }
   };
