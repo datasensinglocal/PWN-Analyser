@@ -375,6 +375,9 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
               <button class="btn brush-btn" id="brush-demote" style="flex:1;padding:8px" onclick="setBrush('demote')">▼ Demote</button>
             </div>
             <div class="step-status pending" id="status-brush">Brush off</div>
+            <div class="step-action" style="margin-top:10px">
+              <button class="btn" id="dl-net-btn" style="width:100%;background:#161616;border:1px solid #3a3a3a;color:#9ab" onclick="downloadCleanedNetwork()">⬇ Download cleaned network (GeoJSON)</button>
+            </div>
             <div class="step-status pending" id="status-5">Run the analysis first</div>
           </div>
         </div>
@@ -1227,6 +1230,25 @@ function renderCities(){
   updateSteps();
 }
 
+function downloadCleanedNetwork(){
+  const gj = window._cleanedNetwork;
+  if(!gj || !gj.features || !gj.features.length){ showToast('Run an analysis first — no cleaned network yet'); return; }
+  // Strip internal props, keep clean GeoJSON
+  const out = { type:'FeatureCollection', features: gj.features.map(f=>({
+    type:'Feature', properties:{}, geometry:{ type:f.geometry.type, coordinates:f.geometry.coordinates }
+  })) };
+  const stats = gj._cleanStats || {};
+  out.properties = { note:'PWN Analyser cleaned & noded network', before:stats.before, after:stats.after, endpointsNoded:stats.noded };
+  const blob = new Blob([JSON.stringify(out)], {type:'application/geo+json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const cityName = (activeCity!=null && cities[activeCity] && cities[activeCity].name) ? cities[activeCity].name.replace(/[^\w-]/g,'_') : 'network';
+  a.href=url; a.download = cityName+'_cleaned_network.geojson';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast('Downloaded cleaned network ('+(stats.after||gj.features.length)+' segments)');
+}
+
 function toggleStepInfo(n){
   const desc=document.getElementById('step-desc-'+n);
   const ico=document.getElementById('step-info-'+n);
@@ -1509,14 +1531,158 @@ function cleanNetwork(net) {
     if (!seen2.has(key)) { seen2.add(key); finalLines.push(coords); }
   });
 
-  const result = turf.featureCollection(finalLines.map(c => turf.lineString(c)));
-  const reduction = Math.round((1-finalLines.length/Math.max(1,net.features.length))*100);
+  // ── Pass 4: Node dangling endpoints onto nearby segments (T-junctions & near-miss gaps) ──
+  // Safety guard: only node bounded networks. The clipped core/buffer are small; if somehow
+  // handed a huge network, skip noding rather than risk a browser hang.
+  if(finalLines.length > 6000){
+    const result0 = turf.featureCollection(finalLines.map(c => turf.lineString(c)));
+    result0._cleanStats = { before:net.features.length, after:finalLines.length,
+      reduction:Math.round((1-finalLines.length/Math.max(1,net.features.length))*100), noded:0 };
+    console.log('Network cleaned (noding skipped — '+finalLines.length+' lines > 6000 guard)');
+    return result0;
+  }
+  // The endpoint-consolidation above only joins endpoints that are NEAR EACH OTHER. It does
+  // not handle a road whose endpoint touches the MIDDLE of another road (a T-junction), nor
+  // endpoints separated by a gap larger than the 10m consolidation radius. Both leave the
+  // network fragmented, which collapses Choice/betweenness. Here we find each dangling
+  // endpoint and, if it lies within ~15m of another segment's geometry, snap it onto that
+  // segment and SPLIT the segment at that point so a shared node forms.
+  let nodedLines = finalLines.map(c => c.slice());
+  const NODE_TOL_DEG = 0.000135;        // ~15m snapping tolerance
+  const NODE_TOL_M   = 15;
+
+  // Endpoint degree (how many line-ends share each ~5m node) — a "dangling" end has degree 1
+  const endDeg = {};
+  nodedLines.forEach(coords => {
+    [coords[0], coords[coords.length-1]].forEach(c => {
+      const k = snapCoord(c).join(',');
+      endDeg[k] = (endDeg[k]||0)+1;
+    });
+  });
+
+  // Spatial grid of segment indices by ~15m cell of every vertex, for fast nearby lookup
+  const GCELL = NODE_TOL_DEG;
+  const gkey = (x,y)=> Math.round(x/GCELL)+'_'+Math.round(y/GCELL);
+  const grid = {};
+  // Index each segment along its WHOLE LENGTH (sample every ~GCELL), not just at vertices —
+  // otherwise a long road with only end-vertices is invisible to lookups along its middle,
+  // and T-junctions touching its mid-section would never be found.
+  nodedLines.forEach((coords, si) => {
+    for(let i=0;i<coords.length-1;i++){
+      const a=coords[i], b=coords[i+1];
+      const dx=b[0]-a[0], dy=b[1]-a[1];
+      const segLen=Math.hypot(dx,dy);
+      const steps=Math.max(1, Math.ceil(segLen/GCELL));
+      for(let s=0;s<=steps;s++){
+        const t=s/steps, x=a[0]+t*dx, y=a[1]+t*dy;
+        const k=gkey(x,y);
+        (grid[k] = grid[k] || new Set()).add(si);
+      }
+    }
+  });
+
+  // For each dangling endpoint, find nearest segment within tolerance and record a split
+  const splitsBySeg = {}; // segIndex → array of {t, pt} split positions
+  let nodedCount = 0;
+
+  function nearestOnSeg(coords, P){
+    // nearest point on a polyline to P, returns {d (deg), pt, segIdx (vertex pair), along}
+    let best = {d:Infinity, pt:null, vi:-1, t:0};
+    for(let i=0;i<coords.length-1;i++){
+      const a=coords[i], b=coords[i+1];
+      const dx=b[0]-a[0], dy=b[1]-a[1];
+      const L2=dx*dx+dy*dy;
+      let t = L2>0 ? ((P[0]-a[0])*dx+(P[1]-a[1])*dy)/L2 : 0;
+      t=Math.max(0,Math.min(1,t));
+      const px=a[0]+t*dx, py=a[1]+t*dy;
+      const d=Math.hypot(P[0]-px,P[1]-py);
+      if(d<best.d){ best={d, pt:[px,py], vi:i, t}; }
+    }
+    return best;
+  }
+
+  nodedLines.forEach((coords, si) => {
+    [0, coords.length-1].forEach(ei => {
+      const P = coords[ei];
+      const dk = snapCoord(P).join(',');
+      if((endDeg[dk]||0) >= 2) return; // already a junction — not dangling
+      // Candidate segments near this endpoint
+      const cand = new Set();
+      const k = gkey(P[0],P[1]);
+      const [kx,ky] = k.split('_').map(Number);
+      for(let ox=-1;ox<=1;ox++) for(let oy=-1;oy<=1;oy++){
+        const g = grid[(kx+ox)+'_'+(ky+oy)];
+        if(g) g.forEach(idx=>{ if(idx!==si) cand.add(idx); });
+      }
+      let bestSeg=-1, bestNP={d:Infinity};
+      cand.forEach(ci=>{
+        const np = nearestOnSeg(nodedLines[ci], P);
+        if(np.d < bestNP.d){ bestNP=np; bestSeg=ci; }
+      });
+      if(bestSeg<0) return;
+      // Convert degree distance to metres (approx) for the tolerance check
+      const dM = bestNP.d * 111000;
+      if(dM > NODE_TOL_M) return;
+      // If the nearest point is essentially an existing endpoint of bestSeg, just snap (no split)
+      const bs = nodedLines[bestSeg];
+      const atStart = bestNP.vi===0 && bestNP.t<0.02;
+      const atEnd   = bestNP.vi===bs.length-2 && bestNP.t>0.98;
+      // Snap the dangling endpoint exactly onto the target point
+      coords[ei] = [bestNP.pt[0], bestNP.pt[1]];
+      nodedCount++;
+      if(!atStart && !atEnd){
+        // Record an interior split on bestSeg at this point
+        (splitsBySeg[bestSeg] = splitsBySeg[bestSeg] || []).push(bestNP.pt);
+      }
+    });
+  });
+
+  // Apply interior splits — break each target segment at the recorded points
+  const out = [];
+  nodedLines.forEach((coords, si) => {
+    const sp = splitsBySeg[si];
+    if(!sp || !sp.length){ out.push(coords); return; }
+    // Insert each split point into the polyline at its correct edge, then split there
+    let work = coords.slice();
+    sp.forEach(pt=>{
+      // find the edge this point lies on and insert it
+      let bestI=-1,bestD=Infinity;
+      for(let i=0;i<work.length-1;i++){
+        const a=work[i],b=work[i+1];
+        const dx=b[0]-a[0],dy=b[1]-a[1],L2=dx*dx+dy*dy;
+        let t=L2>0?((pt[0]-a[0])*dx+(pt[1]-a[1])*dy)/L2:0; t=Math.max(0,Math.min(1,t));
+        const px=a[0]+t*dx,py=a[1]+t*dy,d=Math.hypot(pt[0]-px,pt[1]-py);
+        if(d<bestD){bestD=d;bestI=i;}
+      }
+      if(bestI>=0){
+        // avoid duplicate insert if already a vertex
+        const already = work.some(c=>c[0]===pt[0]&&c[1]===pt[1]);
+        if(!already) work.splice(bestI+1,0,[pt[0],pt[1]]);
+      }
+    });
+    // Now split work into pieces at every split point
+    const splitKeys = new Set(sp.map(p=>p[0]+','+p[1]));
+    let cur=[work[0]];
+    for(let i=1;i<work.length;i++){
+      cur.push(work[i]);
+      if(splitKeys.has(work[i][0]+','+work[i][1]) && i<work.length-1){
+        out.push(cur); cur=[work[i]];
+      }
+    }
+    out.push(cur);
+  });
+  nodedLines = out.filter(c=>c.length>=2);
+
+  const result = turf.featureCollection(nodedLines.map(c => turf.lineString(c)));
+  const reduction = Math.round((1-nodedLines.length/Math.max(1,net.features.length))*100);
   const cleanStats = {
     before: net.features.length,
-    after:  finalLines.length,
-    reduction
+    after:  nodedLines.length,
+    reduction,
+    noded:  nodedCount
   };
-  console.log('Network cleaned: '+cleanStats.before+' → '+cleanStats.after+' features ('+reduction+'% reduction)');
+  console.log('Network cleaned: '+cleanStats.before+' → '+cleanStats.after+' features ('+reduction+'% reduction, '+nodedCount+' endpoints noded)');
+  if(typeof dbg==='function') dbg('Cleaned: '+cleanStats.before+'→'+cleanStats.after+' feats, '+nodedCount+' dangling endpoints noded to T-junctions','OK');
   result._cleanStats = cleanStats;
   return result;
 }
@@ -3156,6 +3322,7 @@ async function runAnalysis(){
 
   setP(11,'Cleaning + segmenting core (junction level)...','clean');await sleep(20);
   const coreClean = cleanNetwork(coreNet);
+  window._cleanedNetwork = coreClean; // capture for export/inspection
   const cs = coreClean._cleanStats || {};
   setPhaseCount('clean',(cs.before||'?')+' → '+(cs.after||'?')+' core features · '+(cs.reduction||0)+'% removed');
   await sleep(60);
