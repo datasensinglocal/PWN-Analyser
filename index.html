@@ -264,6 +264,8 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
 .step-desc.show{display:block}
 
 .sb-version{font-size:9px;color:#555;font-family:monospace;letter-spacing:.04em;margin-top:3px}
+.leg-stat{margin-left:auto;padding-left:10px;font-family:monospace;font-size:9px;color:#999;white-space:nowrap}
+.leg-row{display:flex;align-items:center}
 </style>
 </head>
 <body>
@@ -272,7 +274,7 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
     <div class="sb-eyebrow">Urban Mobility Analysis</div>
     <div class="sb-title">PWN Analyser</div>
     <div class="sb-sub">Priority Walking Network · Space Syntax + Trip Attractors</div>
-    <div class="sb-version" id="sb-version">v1.7 · 2026-06-01</div>
+    <div class="sb-version" id="sb-version">v2.0 · 2026-06-01</div>
   </div>
   <div class="sb-tabs">
     <button class="tab active" onclick="switchTab('data')">Data</button>
@@ -390,6 +392,17 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
     <!-- WEIGHTS TAB -->
     <div id="tab-weights" style="display:none">
       <div class="section">
+        <div class="sec-label">Analysis Radius <span style="color:#3a7a4a;font-weight:400">· walking scale</span></div>
+        <div class="ss-block">
+          <div class="ss-wr"><span class="ss-lbl">Radius</span><input type="range" id="ss-radius" min="400" max="6000" value="1250" step="50" oninput="syncRadius()"/><span class="ss-val" id="rv-radius">1250 m</span></div>
+          <div style="display:flex;align-items:center;gap:6px;margin-top:5px">
+            <button class="btn" id="radius-reset" style="font-size:9px;padding:4px 8px;background:#13241a;border:1px solid #2f5a3f;color:#6fbf8a" onclick="resetRadius()">↺ 15-min walk (1250 m)</button>
+            <span id="radius-flag" style="font-size:9px;color:#d98a3a;display:none">⚠ beyond walking scale</span>
+          </div>
+          <div style="font-size:9px;color:#777;line-height:1.45;margin-top:5px">This tool measures the <b style="color:#6fbf8a">walking</b> network. <b>1250 m ≈ a 15-min walk</b> and is the intended default — keep it here unless you have a specific reason not to. A larger radius can reveal regional structure over a big study area, but past ~2 km you are measuring movement at <i>vehicular</i> scale, which is a different network than the one people walk.</div>
+        </div>
+      </div>
+      <div class="section">
         <div class="sec-label">Space Syntax Composite</div>
         <div style="font-size:10px;color:#888;line-height:1.5;background:#141414;border:1px solid #262626;border-radius:5px;padding:9px 10px">
           A street's Space Syntax score is the <b style="color:#c8a96e">strongest</b> of its three structural measures — Connectivity, Integration, or Choice (a weighted-max). A street is a walking priority if it's important for <i>any</i> of these reasons, so the model takes its best quality rather than averaging them (averaging flattens the differences). The three measures are treated as equal lenses; there are no sub-weights to set.
@@ -502,10 +515,10 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
   </div>
   <div class="legend" id="legend">
     <div class="leg-title">PWN Grade</div>
-    <div class="leg-row" id="leg-pwn1"><div class="leg-line" style="background:#D0021B"></div>PWN 1 — Critical</div>
-    <div class="leg-row" id="leg-pwn2"><div class="leg-line" style="background:#E87722"></div>PWN 2 — Secondary</div>
-    <div class="leg-row" id="leg-pwn3"><div class="leg-line" style="background:#F5C518"></div>PWN 3 — Feeder</div>
-    <div class="leg-row" id="leg-pwn4"><div class="leg-line" style="background:#1565C0"></div>PWN 4 — Enclave</div>
+    <div class="leg-row" id="leg-pwn1"><div class="leg-line" style="background:#D0021B"></div>PWN 1 — Critical<span class="leg-stat" id="lst-pwn1"></span></div>
+    <div class="leg-row" id="leg-pwn2"><div class="leg-line" style="background:#E87722"></div>PWN 2 — Secondary<span class="leg-stat" id="lst-pwn2"></span></div>
+    <div class="leg-row" id="leg-pwn3"><div class="leg-line" style="background:#F5C518"></div>PWN 3 — Feeder<span class="leg-stat" id="lst-pwn3"></span></div>
+    <div class="leg-row" id="leg-pwn4"><div class="leg-line" style="background:#1565C0"></div>PWN 4 — Enclave<span class="leg-stat" id="lst-pwn4"></span></div>
     <div class="leg-row conn-row" id="leg-conn" style="display:none"><div class="leg-line" style="background:#00e0c0;border-top:2px dashed #00e0c0;height:0"></div>Network Gap Closer</div>
     <div class="leg-row" id="leg-corridor" style="display:none"><div class="leg-line" style="background:#c8a96e;border-top:2px dashed #c8a96e;height:0"></div>Attractor corridor (out-of-area pull)</div>
     <div id="leg-score" style="display:none">
@@ -2362,12 +2375,12 @@ async function runSSInWorker(graph, n, metRadius, label, pctFrom, pctTo, originI
   return { totDepth:Array.from(totDepth), nodeCnt:Array.from(nodeCnt), choice:Array.from(choice) };
 }
 
-async function computeSS(sSegs, cSegs, sGraph, cGraph, pctStart, pctEnd) {
-  // Single walkability radius (5 km/h): 15 min = 1250m.
+async function computeSS(sSegs, cSegs, sGraph, cGraph, pctStart, pctEnd, radiusM) {
+  // Analysis radius (metres) — set by the user. Smaller = local structure;
+  // larger = regional arterial hierarchy. 1250m ≈ a 15-min walk at 5 km/h.
   // Runs on ALL segments (study + buffer) so every study-core road sees its
-  // full 15-min catchment. Longer-range 'destination pull' is carried entirely
-  // by trip-attractor proximity, not by any larger SS radius.
-  const R15 = 1250;
+  // full catchment within the chosen radius.
+  const R15 = radiusM || 1250;
   const n    = sSegs.length;
   const span = pctEnd - pctStart;
 
@@ -2386,7 +2399,7 @@ async function computeSS(sSegs, cSegs, sGraph, cGraph, pctStart, pctEnd) {
   dbg('Graph serialised ('+sG.length+' nodes). Starting Dijkstra...');
   setP(pctStart, '15-min walk (NAIN + NACH R1250)...','nain800');
   const r15 = await runSSInWorker(sG, n, R15,
-    'NAIN+NACH 15min R1250', pctStart, pctEnd, coreOrigins);
+    'NAIN+NACH', pctStart, pctEnd, coreOrigins);
   dbg('Dijkstra complete','OK');
   sSegs.forEach((s,i)=>{
     const nc=r15.nodeCnt[i], td=r15.totDepth[i];
@@ -3064,12 +3077,12 @@ async function runAnimatedReveal(segs, sGraph, attConfigs, ssW, proxW, p1t, p2t,
   await sleep(HOLD);
 
   // Phase 2 — 15-min Integration
-  showPhase(segs, '15-min Integration  ·  NAIN R1250', 'How central each street is within a 15-min walk',
+  showPhase(segs, 'Integration  ·  NAIN', 'How central each street is within a 15-min walk',
     s => heatColor(s._li8), s => 1.5 + s._li8 * 3.5);
   await sleep(HOLD);
 
   // Phase 3 — 15-min Choice
-  showPhase(segs, '15-min Choice  ·  NACH R1250', 'Through-movement desire lines within a 15-min walk',
+  showPhase(segs, 'Choice  ·  NACH', 'Through-movement desire lines within a 15-min walk',
     s => heatColor(s._ch), s => 1.5 + s._ch * 3.5);
   await sleep(HOLD);
 
@@ -3182,6 +3195,26 @@ function updateStats(segs){
   document.getElementById('st').textContent=segs.length;
   document.getElementById('stats-footer').style.display='block';
   document.getElementById('legend').style.display='block';
+
+  // Per-tier share (%) and total length (m) for the on-map legend.
+  // Length is measured per segment with turf; only graded study-core segments count.
+  const tiers=['pwn1','pwn2','pwn3','pwn4'];
+  const lenByTier={pwn1:0,pwn2:0,pwn3:0,pwn4:0};
+  let totalLen=0, totalCount=segs.length||1;
+  segs.forEach(s=>{
+    let L=0;
+    try{ L = turf.length(s, {units:'kilometers'})*1000; }catch(e){ L=0; }
+    if(lenByTier[s._pwn]!==undefined) lenByTier[s._pwn]+=L;
+    totalLen+=L;
+  });
+  const fmtLen = m => m>=1000 ? (m/1000).toFixed(m>=10000?0:1)+' km' : Math.round(m)+' m';
+  const denom = totalLen||1;
+  tiers.forEach(t=>{
+    const el=document.getElementById('lst-'+t); if(!el) return;
+    const len = lenByTier[t]||0;
+    const pct = Math.round(100*len/denom); // share of total network LENGTH (consistent with metres)
+    el.textContent = pct+'% · '+fmtLen(len);
+  });
 }
 
 /* ════════════════════════════════════════════════
@@ -3250,6 +3283,23 @@ function startAnalysisClock(){
 }
 
 /* ── Weights sync ── */
+function syncRadius(){
+  const el=document.getElementById('ss-radius'); if(!el) return;
+  const v=parseInt(el.value);
+  const lbl=document.getElementById('rv-radius');
+  if(lbl) lbl.textContent = v>=1000 ? (v/1000).toFixed(v%1000?2:1).replace(/\.0$/,'')+' km' : v+' m';
+  // Flag when the radius leaves walking scale (~2 km) — keeps the walking principle visible
+  const flag=document.getElementById('radius-flag');
+  if(flag) flag.style.display = v>2000 ? 'inline' : 'none';
+  // Tint the value amber when beyond walking scale, green at/near the 1250m default
+  if(lbl) lbl.style.color = v>2000 ? '#d98a3a' : (Math.abs(v-1250)<=150 ? '#6fbf8a' : '#c8a96e');
+}
+
+function resetRadius(){
+  const el=document.getElementById('ss-radius'); if(!el) return;
+  el.value=1250; syncRadius();
+}
+
 function syncSSW(){
   const keys=['conn','li8','ch'];
   if(!document.getElementById('w-conn')) return; // sub-weight sliders removed
@@ -3356,6 +3406,7 @@ async function runAnalysis(){
   const p3t=parseInt(document.getElementById('p3t').value)/100;
   // Sub-weights removed: composite is a plain max of the three equal structural measures.
   const wN=[1,1,1];
+  const ssRadius = parseInt((document.getElementById('ss-radius')||{}).value || '1250');
 
   // Area check before starting
   if(bounds.study){
@@ -3494,7 +3545,7 @@ async function runAnalysis(){
   // Space Syntax — single 15-min radius, computed on all segments
   setP(38,'Space Syntax (15-min walk) — '+allSegs.length+' segments...','nain800');await sleep(30);
   dbg('Calling computeSS...','STAGE');
-  await computeSS(allSegs, allSegs, sGraph, sGraph, 38, 78);
+  await computeSS(allSegs, allSegs, sGraph, sGraph, 38, 78, ssRadius);
   dbg('computeSS returned','OK');
   setP(78,'Space Syntax complete','nain800',coreSegs.length+' core scored');await sleep(20);
 
@@ -3725,6 +3776,7 @@ function deleteSession(){
 /* ── INIT ── */
 renderCities();renderAtts();renderAttLayers();renderSavedBoundsList();
 updateSteps();
+if(typeof syncRadius==='function') syncRadius();
 </script>
 </body>
 </html>
