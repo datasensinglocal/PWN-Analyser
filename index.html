@@ -272,7 +272,7 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
     <div class="sb-eyebrow">Urban Mobility Analysis</div>
     <div class="sb-title">PWN Analyser</div>
     <div class="sb-sub">Priority Walking Network · Space Syntax + Trip Attractors</div>
-    <div class="sb-version" id="sb-version">v1.6 · 2026-06-01</div>
+    <div class="sb-version" id="sb-version">v1.7 · 2026-06-01</div>
   </div>
   <div class="sb-tabs">
     <button class="tab active" onclick="switchTab('data')">Data</button>
@@ -390,12 +390,9 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
     <!-- WEIGHTS TAB -->
     <div id="tab-weights" style="display:none">
       <div class="section">
-        <div class="sec-label">Space Syntax Sub-score Weights</div>
-        <div class="ss-block">
-          <div class="ss-wr"><span class="ss-lbl">Connectivity</span><input type="range" id="w-conn" min="0" max="100" value="15" step="1" oninput="syncSSW()"/><span class="ss-val" id="wv-conn">15%</span></div>
-          <div class="ss-wr"><span class="ss-lbl">15-min Integration</span><input type="range" id="w-li8" min="0" max="100" value="45" step="1" oninput="syncSSW()"/><span class="ss-val" id="wv-li8">45%</span></div>
-          <div class="ss-wr"><span class="ss-lbl">15-min Choice</span><input type="range" id="w-ch" min="0" max="100" value="40" step="1" oninput="syncSSW()"/><span class="ss-val" id="wv-ch">40%</span></div>
-          <div class="ss-total" id="ss-total">Total: 100%</div>
+        <div class="sec-label">Space Syntax Composite</div>
+        <div style="font-size:10px;color:#888;line-height:1.5;background:#141414;border:1px solid #262626;border-radius:5px;padding:9px 10px">
+          A street's Space Syntax score is the <b style="color:#c8a96e">strongest</b> of its three structural measures — Connectivity, Integration, or Choice (a weighted-max). A street is a walking priority if it's important for <i>any</i> of these reasons, so the model takes its best quality rather than averaging them (averaging flattens the differences). The three measures are treated as equal lenses; there are no sub-weights to set.
         </div>
       </div>
       <div class="section">
@@ -2688,10 +2685,8 @@ function reGrade(){
   const p1t=parseInt(document.getElementById('p1t').value)/100;
   const p2t=parseInt(document.getElementById('p2t').value)/100;
   const p3t=parseInt(document.getElementById('p3t').value)/100;
-  const wKeys=['conn','li8','ch'];
-  const wRaw=wKeys.map(k=>parseInt(document.getElementById('w-'+k).value));
-  const wTot=wRaw.reduce((s,v)=>s+v,0)||100;
-  const wN=wRaw.map(v=>v/wTot);
+  // Sub-weights removed: composite is a plain max of the three equal structural measures.
+  const wN=[1,1,1];
   // Recompute proximity with current attVis
   const attConfigs=atts.map((a,i)=>({...a,vis:attVis[i]!==false}));
   computeProximity(segments,lastGraph,attConfigs);
@@ -3257,6 +3252,7 @@ function startAnalysisClock(){
 /* ── Weights sync ── */
 function syncSSW(){
   const keys=['conn','li8','ch'];
+  if(!document.getElementById('w-conn')) return; // sub-weight sliders removed
   const vals=keys.map(k=>parseInt(document.getElementById('w-'+k).value));
   const tot=vals.reduce((s,v)=>s+v,0);
   keys.forEach((k,i)=>{ const el=document.getElementById('wv-'+k); if(el) el.textContent=vals[i]+'%'; });
@@ -3358,10 +3354,8 @@ async function runAnalysis(){
   const p1t=parseInt(document.getElementById('p1t').value)/100;
   const p2t=parseInt(document.getElementById('p2t').value)/100;
   const p3t=parseInt(document.getElementById('p3t').value)/100;
-  const wKeys=['conn','li8','ch'];
-  const wRaw=wKeys.map(k=>parseInt(document.getElementById('w-'+k).value));
-  const wTot=wRaw.reduce((s,v)=>s+v,0)||100;
-  const wN=wRaw.map(v=>v/wTot);
+  // Sub-weights removed: composite is a plain max of the three equal structural measures.
+  const wN=[1,1,1];
 
   // Area check before starting
   if(bounds.study){
