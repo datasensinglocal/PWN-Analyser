@@ -210,6 +210,14 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
 .phase-sub{font-size:10px;color:#555;font-family:monospace;margin-top:3px}
 .boundary-group{display:flex;flex-direction:column;gap:4px;margin-bottom:2px}
 .boundary-actions{display:flex;gap:4px}
+.nb-define{display:flex;flex-direction:column;gap:5px}
+.nb-opt{display:flex;gap:5px;align-items:stretch}
+.nb-opt .map-btn:first-child{flex:1}
+.nb-ico{flex:0 0 auto;padding:0 10px;min-width:30px;display:flex;align-items:center;justify-content:center}
+.info-ico{font-style:italic;font-family:Georgia,serif;font-weight:700}
+.nb-info{font-size:10px;color:#bbb;line-height:1.5;background:#161616;border:1px solid #2a2a2a;border-left:2px solid #c8a96e;border-radius:4px;padding:7px 9px;margin:-1px 0 2px}
+.nb-upload-label{display:flex;align-items:center;font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#888;padding-right:3px;flex:0 0 auto}
+.nb-sub{flex:1;font-size:10px}
 .nbhd-row{display:flex;align-items:center;gap:6px;padding:4px 5px;border-radius:4px;font-size:11px;color:#ccc}
 .nbhd-row:hover{background:#1a1a1a}
 .nbhd-row.sel{background:#23201a;outline:1px solid #c8a96e}
@@ -218,6 +226,7 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
 .nbhd-name{flex:1;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .nbhd-name:hover{color:#fff;text-decoration:underline}
 .nbhd-area{color:#777;font-size:10px;font-family:monospace;flex:0 0 auto}
+.nbhd-active-badge{font-size:9px;color:#c8a96e;font-weight:700;letter-spacing:.03em;flex:0 0 auto;white-space:nowrap}
 .nbhd-acts{display:flex;gap:2px;flex:0 0 auto}
 .nbhd-acts button{background:none;border:none;color:#666;cursor:pointer;font-size:11px;padding:2px 4px;border-radius:3px}
 .nbhd-acts button:hover{color:#fff;background:#333}
@@ -240,6 +249,20 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
 .step.done .step-num::after{content:'✓';font-size:13px}
 .step.done .step-num span{display:none}
 .step-body{flex:1;min-width:0}
+/* Accordion: a step's controls show when it is the active step OR manually opened.
+   Completed (done) steps collapse to their header; click any reached step's header
+   to expand/collapse. Locked (not-yet-reached) steps cannot be opened.
+   Title row + ⓘ popup always stay visible so the whole flow is seen. */
+.step:not(.active):not(.man-open) .step-body > *:not(.step-title-row):not(.step-desc){display:none !important;}
+.step.man-collapsed .step-body > *:not(.step-title-row):not(.step-desc){display:none !important;}
+.step.locked{opacity:.5;}
+.step:not(.locked) .step-title-row{cursor:pointer;}
+/* caret indicator on every reachable step */
+.step:not(.locked) .step-title-row::after{margin-left:auto;color:#777;font-size:11px;}
+.step.active:not(.man-collapsed) .step-title-row::after,
+.step.done.man-open .step-title-row::after{content:'▾';}
+.step.done:not(.man-open) .step-title-row::after,
+.step.active.man-collapsed .step-title-row::after{content:'▸';}
 .step-title{font-size:13px;font-weight:600;color:#e8e8e8;letter-spacing:.02em}
 .step.locked .step-title{color:#888}
 .step-desc{font-size:10px;color:#777;line-height:1.45;margin-top:3px}
@@ -340,7 +363,6 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
                 </div>
               </div>
             </div>
-            <div class="step-status pending" id="status-1">No data loaded yet</div>
           </div>
         </div>
 
@@ -348,25 +370,29 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
         <div class="step locked" id="step-2">
           <div class="step-num"><span>2</span></div>
           <div class="step-body">
-            <div class="step-title-row"><span class="step-title">Draw study boundary</span><span class="step-info-ico" id="step-info-2" onclick="toggleStepInfo(2)" title="What to do">i</span></div>
-            <div class="step-desc" id="step-desc-2">Outline the neighbourhood to analyse with <b>Draw Study Area</b>, drop a 2 km² module, or upload a boundary. Or build a whole set of neighbourhoods below (draw + add, or import a mesh).</div>
-            <div class="step-status pending" id="status-2">Waiting for a study boundary</div>
+            <div class="step-title-row"><span class="step-title">Define neighbourhood(s)</span><span class="step-info-ico" id="step-info-2" onclick="toggleStepInfo(2)" title="What to do">i</span></div>
+            <div class="step-desc" id="step-desc-2">Define the area(s) to analyse. Each neighbourhood is one 15-minute unit. Add one by drawing or uploading a polygon, or load a whole mesh of many tiles at once.</div>
 
-            <!-- Study area controls -->
-            <div class="boundary-group" id="study-group" style="margin-top:8px">
-              <div style="display:flex;gap:5px;align-items:stretch">
-                <button class="map-btn study" id="study-btn" onclick="startDraw('study')" style="flex:1">Draw Study Area</button>
-                <button class="map-btn bnd-reset" onclick="resetBoundary('study')" title="Reset study area" style="flex:0 0 auto;padding:0 9px">↺</button>
+            <!-- Define neighbourhoods: draw, or upload (polygon / mesh) -->
+            <div class="nb-define" style="margin-top:8px">
+              <div class="nb-opt">
+                <button class="map-btn study" id="study-btn" onclick="startDraw('study')" title="Draw one neighbourhood boundary on the map">✏ Draw a boundary</button>
+                <button class="map-btn bnd-reset nb-ico" onclick="resetBoundary('study')" title="Reset the drawn boundary">↺</button>
+                <button class="map-btn nb-ico" id="suggest-btn" onclick="toggleSuggestModule()" title="Drop a ready-made 2 km² module at the map centre">⬛</button>
               </div>
-              <div style="display:flex;gap:5px;align-items:stretch;margin-top:5px">
-                <input type="file" id="study-bnd-file" accept=".geojson,.json,.kml" style="display:none" onchange="loadBoundaryFile(this,'study')"/>
-                <button class="map-btn" onclick="document.getElementById('study-bnd-file').click()" title="Upload a study-area.geojson or .kml boundary" style="flex:1;font-size:9px">⬆ Upload Boundary</button>
-                <button class="map-btn" id="suggest-btn" onclick="toggleSuggestModule()" title="Show a 2 km² suggested module at the map centre" style="flex:1;font-size:9px">Drop 2 km² Module</button>
+              <div class="nb-opt">
+                <input type="file" id="poly-file" accept=".geojson,.json,.kml" style="display:none" onchange="uploadPolygon(this)"/>
+                <input type="file" id="mesh-file" accept=".geojson,.json,.kml" style="display:none" onchange="uploadMesh(this)"/>
+                <span class="nb-upload-label">⬆ Upload</span>
+                <button class="map-btn nb-sub" onclick="document.getElementById('poly-file').click()" title="Upload a single neighbourhood polygon">Polygon</button>
+                <button class="map-btn nb-sub" onclick="document.getElementById('mesh-file').click()" title="Upload a mesh of many neighbourhood tiles">Mesh</button>
+                <button class="map-btn nb-ico info-ico" onclick="toggleInfo('info-upload')" title="Polygon vs mesh?">i</button>
               </div>
-              <div class="boundary-actions" id="study-actions" style="display:none;margin-top:5px">
-                <button class="map-btn bnd-act" onclick="saveBoundary('study')" title="Save this boundary">Save</button>
-                <button class="map-btn bnd-act" onclick="addCurrentBoundaryAsNbhd()" title="Add the current boundary to the neighbourhood set">＋ Add as neighbourhood</button>
-              </div>
+              <div id="info-upload" class="nb-info" style="display:none"><b>Polygon</b> = one neighbourhood boundary. It becomes the study area directly — then hit Run, exactly like drawing one. <b>Mesh</b> = a whole-city partition of many adjacent tiles (e.g. the carved city). Uploading a mesh builds a list of neighbourhoods you analyse one at a time. Both accept GeoJSON / KML.</div>
+            </div>
+
+            <div class="boundary-actions" id="study-actions" style="display:none;margin-top:6px">
+              <button class="map-btn bnd-act" onclick="saveBoundary('study')" title="Save this boundary">Save</button>
             </div>
 
             <!-- Saved boundaries -->
@@ -378,26 +404,34 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
               <button class="map-btn bnd-act bnd-del" onclick="deleteSavedBoundary()" title="Delete">Del</button>
             </div>
 
-            <!-- NEIGHBOURHOODS (multi-tile set) -->
-            <div id="nbhd-section" style="margin-top:10px;border-top:1px solid #2a2a2a;padding-top:9px">
+            <!-- NEIGHBOURHOOD SET (the list) -->
+            <div id="nbhd-section" style="display:none;margin-top:10px;border-top:1px solid #2a2a2a;padding-top:9px">
               <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer" onclick="openNbhdPanel()">
                 <span style="font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#c8a96e;font-weight:700">Neighbourhood set <span id="nbhd-caret">▾</span></span>
                 <span id="nbhd-count" style="font-size:10px;color:#888">none yet</span>
               </div>
               <div id="nbhd-body" style="margin-top:7px">
-                <div style="display:flex;gap:5px;align-items:stretch;margin-bottom:5px">
-                  <input type="file" id="nbhd-import-file" accept=".geojson,.json,.kml" style="display:none" onchange="importNeighbourhoods(this)"/>
-                  <button class="map-btn" onclick="document.getElementById('nbhd-import-file').click()" title="Import one polygon, or a mesh (many tiles) — GeoJSON/KML" style="flex:1;font-size:9px">⬇ Import polygon / mesh</button>
-                  <button class="map-btn" onclick="toggleMeshHelp()" title="What is a mesh?" style="flex:0 0 auto;padding:0 9px;font-size:9px">?</button>
-                </div>
-                <div id="mesh-help" style="display:none;font-size:10px;color:#aaa;line-height:1.5;background:#161616;border:1px solid #2a2a2a;border-radius:5px;padding:8px;margin-bottom:6px">
-                  A <b>mesh</b> is a set of adjacent neighbourhood tiles that share edges — like the carved city tiles. Importing a mesh adds every tile at once, each as its own polygon with an ID. A single polygon imports as one neighbourhood. After editing, use <b>Renumber</b> to tidy the IDs.
-                </div>
                 <div style="display:flex;gap:5px;margin-bottom:5px">
                   <input id="nbhd-filter-input" oninput="applyNbhdFilter()" placeholder="filter: id, name, 3-7…" style="flex:1;font-size:10px;padding:4px 6px;background:#141414;border:1px solid #2a2a2a;border-radius:4px;color:#e8e8e8"/>
                   <button class="map-btn" onclick="clearNbhdFilter()" title="Clear filter" style="flex:0 0 auto;padding:0 8px;font-size:9px">✕</button>
                 </div>
                 <div id="nbhd-list" style="max-height:200px;overflow-y:auto;margin:6px 0"></div>
+
+                <!-- Stage 4: batch analysis -->
+                <div style="display:flex;gap:5px;margin-bottom:5px">
+                  <button class="map-btn study" id="batch-run-btn" onclick="analyseAllNeighbourhoods()" title="Analyse every neighbourhood (or the filtered subset), one at a time" style="flex:1;font-size:9px">▶ Analyse all</button>
+                  <button class="map-btn bnd-del" onclick="stopBatch()" title="Stop the batch after the current one" style="flex:0 0 auto;padding:0 9px;font-size:9px">■ Stop</button>
+                </div>
+                <div id="batch-bar" style="display:none;margin-bottom:6px">
+                  <div style="font-size:9px;color:#c8a96e;margin-bottom:3px" id="batch-label">Analysing…</div>
+                  <div style="height:6px;background:#222;border-radius:3px;overflow:hidden"><div id="batch-fill" style="height:100%;width:0;background:#c8a96e;transition:width .2s"></div></div>
+                </div>
+
+                <!-- Stage 5: view controls -->
+                <div style="display:flex;gap:5px;margin-bottom:5px">
+                  <button class="map-btn" onclick="showCombinedResults()" title="Show all analysed neighbourhoods together (or the filtered subset)" style="flex:1;font-size:9px">▦ Combined view</button>
+                </div>
+
                 <div style="display:flex;gap:5px">
                   <button class="map-btn" onclick="renumberNeighbourhoods()" title="Renumber IDs top-to-bottom" style="flex:1;font-size:9px">↻ Renumber</button>
                   <button class="map-btn" onclick="clearAllNeighbourhoods()" title="Remove all" style="flex:0 0 auto;padding:0 9px;font-size:9px">Clear all</button>
@@ -413,7 +447,6 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
           <div class="step-body">
             <div class="step-title-row"><span class="step-title">Set global context</span><span class="step-info-ico" id="step-info-3" onclick="toggleStepInfo(3)" title="What to do">i</span></div>
             <div class="step-desc" id="step-desc-3">A surrounding <b>analysis buffer</b> is generated automatically (≈1.25 km) so streets near the edge are measured correctly. Adjust it with <b>Draw Global Context</b> / <b>Auto 1.25 km</b> if needed.</div>
-            <div class="step-status pending" id="status-3">Using the auto buffer</div>
             <!-- Context controls -->
             <div class="boundary-group" id="ctx-group" style="margin-top:8px">
               <div style="display:flex;gap:5px;align-items:stretch">
@@ -454,11 +487,9 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
               <button class="btn brush-btn" id="brush-promote" style="flex:1;padding:8px" onclick="setBrush('promote')">▲ Promote</button>
               <button class="btn brush-btn" id="brush-demote" style="flex:1;padding:8px" onclick="setBrush('demote')">▼ Demote</button>
             </div>
-            <div class="step-status pending" id="status-brush">Brush off</div>
             <div class="step-action" style="margin-top:10px">
               <button class="btn" id="dl-net-btn" style="width:100%;background:#161616;border:1px solid #3a3a3a;color:#9ab" onclick="downloadCleanedNetwork()">⬇ Download cleaned network (GeoJSON)</button>
             </div>
-            <div class="step-status pending" id="status-5">Run the analysis first</div>
           </div>
         </div>
 
@@ -1153,9 +1184,14 @@ let selectedNbhdId = null;
 function selectNeighbourhood(id){
   selectedNbhdId = id;
   const nb = neighbourhoods.find(n=>n.id===id);
-  if(nb && nb.layer){
+  if(!nb) return;
+  // Make this tile the active study boundary, so the normal Run button analyses it.
+  // Reuses the existing single-boundary pipeline unchanged (applyBoundary → Run).
+  try{ applyBoundary('study', JSON.parse(JSON.stringify(nb.ring))); }catch(e){}
+  if(nb.layer){
     try{ map.fitBounds(nb.layer.getBounds(),{padding:[40,40]}); }catch(e){}
   }
+  showToast('#'+nb.id+(nb.name?(' · '+nb.name):'')+' is now the active study area — hit Run PWN Analysis');
   renderNbhdList();
 }
 
@@ -1202,6 +1238,52 @@ function importNeighbourhoods(input){
   input.value='';
 }
 
+// Upload a SINGLE polygon → it becomes the study area directly (same as the old
+// "upload boundary" flow). One polygon = one neighbourhood = one study area.
+function uploadPolygon(input){
+  const file = input.files[0]; if(!file) return;
+  parseFile(file,(err,gj)=>{
+    if(err){ showToast(err); return; }
+    const polys = extractAllPolygons(gj);
+    if(!polys.length){ showToast('No polygon found in that file'); input.value=''; return; }
+    if(polys.length>1){
+      showToast('That file has '+polys.length+' polygons — looks like a mesh. Using only the first. Use “Upload a mesh” to load them all.', 6000);
+    }
+    const ring = dropClosing(polys[0].ring);
+    applyBoundary('study', ring);
+    showToast('Boundary loaded as the study area — hit Run PWN Analysis');
+  });
+  input.value='';
+}
+
+// Upload a MESH → many neighbourhoods (warns if the file is actually just one)
+function uploadMesh(input){
+  const file = input.files[0]; if(!file) return;
+  parseFile(file,(err,gj)=>{
+    if(err){ showToast(err); return; }
+    const polys = extractAllPolygons(gj);
+    if(!polys.length){ showToast('No polygons found in that file'); input.value=''; return; }
+    if(polys.length===1){
+      showToast('That file has only 1 polygon, not a mesh — adding it as a single neighbourhood.', 5000);
+    }
+    let added=0;
+    polys.forEach(p=>{ if(addNeighbourhood(p.ring, p.name)) added++; });
+    showToast('Added '+added+' neighbourhood'+(added>1?'s':'')+' from mesh');
+    renderNbhdList(); updateNbhdCount(); openNbhdPanel(true);
+    try{ const grp=L.featureGroup(neighbourhoods.map(n=>n.layer).filter(Boolean)); map.fitBounds(grp.getBounds(),{padding:[30,30]}); }catch(e){}
+  });
+  input.value='';
+}
+
+// Generic info-popup toggle (used by the polygon / mesh ⓘ icons)
+function toggleInfo(id){
+  const e=document.getElementById(id); if(!e) return;
+  const show = e.style.display==='none';
+  // close sibling infos
+  document.querySelectorAll('.nb-info').forEach(n=>{ if(n.id!==id) n.style.display='none'; });
+  e.style.display = show ? 'block':'none';
+}
+
 function clearAllNeighbourhoods(){
   if(!neighbourhoods.length) return;
   if(!confirm('Remove all '+neighbourhoods.length+' neighbourhoods?')) return;
@@ -1226,12 +1308,115 @@ function renumberNeighbourhoods(){
   showToast('Renumbered '+neighbourhoods.length+' neighbourhoods top-to-bottom');
 }
 
+// ════════════════════════════════════════════════════════════════════════
+// STAGE 4 — Analyse all (sequential batch) + STAGE 5 — combined view/filter
+// ════════════════════════════════════════════════════════════════════════
+let batchRunning=false, batchStop=false;
+
+// lightweight per-segment clone (geometry + grade fields) so a tile's result
+// survives the next analysis overwriting the globals.
+function cloneSeg(s){
+  return {
+    type:'Feature',
+    geometry: s.geometry,                 // geometry is immutable here; share ref to save memory
+    _pwn:s._pwn, _final:s._final, _ss:s._ss, _coN:s._coN, _li8:s._li8, _ch:s._ch,
+    _px:s._px, _pxRaw:s._pxRaw, _pxDet:s._pxDet, _co:s._co, _id:s._id,
+    _gated:s._gated, _connector:s._connector, _nbhd:(typeof selectedNbhdId!=='undefined'?selectedNbhdId:null)
+  };
+}
+function captureStats(segs){
+  const c={pwn1:0,pwn2:0,pwn3:0,pwn4:0};
+  segs.forEach(s=>{ c[s._pwn]=(c[s._pwn]||0)+1; });
+  return {count:segs.length, tiers:c};
+}
+
+async function analyseAllNeighbourhoods(){
+  if(batchRunning){ showToast('A batch is already running'); return; }
+  const todo = neighbourhoods.filter(nb=> nbhdFilter ? nbhdFilter.has(nb.id) : true);
+  if(!todo.length){ showToast('No neighbourhoods to analyse'); return; }
+  // confirm for large runs
+  if(todo.length>20 && !confirm('Analyse '+todo.length+' neighbourhoods one by one? This can take a while — you can Stop at any point.')) return;
+
+  batchRunning=true; batchStop=false;
+  showBatchBar(true); setBatchProgress(0, todo.length, null);
+
+  let done=0;
+  for(const nb of todo){
+    if(batchStop){ showToast('Batch stopped at '+done+'/'+todo.length); break; }
+    setBatchProgress(done, todo.length, nb);
+    // make this tile the active study area (same as a manual click) and run
+    selectedNbhdId = nb.id;
+    try{ applyBoundary('study', JSON.parse(JSON.stringify(nb.ring))); }catch(e){}
+    // give the context auto-gen a moment (applyBoundary schedules it ~200ms)
+    await sleep(260);
+    try{
+      await runAnalysis();   // stores nb.result on completion (see runAnalysis tail)
+    }catch(e){ console.error('analysis failed for #'+nb.id, e); }
+    done++;
+    setBatchProgress(done, todo.length, nb, true);
+    await sleep(120); // small breath so the UI paints the tick
+  }
+  batchRunning=false;
+  showBatchBar(false);
+  const n = neighbourhoods.filter(x=>x.status==='analysed').length;
+  showToast('Batch finished — '+n+' of '+neighbourhoods.length+' neighbourhoods analysed');
+  renderNbhdList();
+  // after a batch, default to the combined view
+  showCombinedResults();
+}
+
+function stopBatch(){ batchStop=true; showToast('Stopping after the current neighbourhood…'); }
+
+// ── Stage 5: combined / filtered rendering of stored results ──
+function analysedTiles(){ return neighbourhoods.filter(nb=>nb.status==='analysed' && nb.result && nb.result.segs); }
+
+function showCombinedResults(){
+  const tiles = analysedTiles().filter(nb=> nbhdFilter ? nbhdFilter.has(nb.id) : true);
+  if(!tiles.length){ showToast('No analysed neighbourhoods to show yet'); return; }
+  const all=[];
+  tiles.forEach(nb=> nb.result.segs.forEach(s=> all.push(s)) );
+  renderSegs(all);
+  updateStats(all);
+  // fit to the union of shown tiles
+  try{
+    const grp=L.featureGroup(tiles.map(n=>n.layer).filter(Boolean));
+    map.fitBounds(grp.getBounds(),{padding:[30,30]});
+  }catch(e){}
+  showToast('Showing '+tiles.length+' analysed neighbourhood'+(tiles.length>1?'s':'')+' · '+all.length+' segments');
+}
+
+function showSingleResult(id){
+  const nb = neighbourhoods.find(n=>n.id===id);
+  if(!nb || !nb.result || !nb.result.segs){ showToast('That neighbourhood has no stored result — analyse it first'); return; }
+  renderSegs(nb.result.segs);
+  updateStats(nb.result.segs);
+  selectedNbhdId=id; renderNbhdList();
+  try{ if(nb.layer) map.fitBounds(nb.layer.getBounds(),{padding:[40,40]}); }catch(e){}
+  showToast('Showing #'+nb.id+(nb.name?(' · '+nb.name):''));
+}
+
+// ── Batch progress bar UI ──
+function showBatchBar(show){
+  const el=document.getElementById('batch-bar');
+  if(el) el.style.display = show ? 'block':'none';
+}
+function setBatchProgress(done, total, nb, justFinished){
+  const fill=document.getElementById('batch-fill');
+  const lbl=document.getElementById('batch-label');
+  const pct = total ? Math.round(done/total*100) : 0;
+  if(fill) fill.style.width = pct+'%';
+  if(lbl){
+    if(nb && !justFinished) lbl.textContent = 'Analysing #'+nb.id+(nb.name?(' · '+nb.name):'')+'  ('+(done+1)+'/'+total+')';
+    else lbl.textContent = done+' / '+total+' done';
+  }
+}
+
 // ── Neighbourhood panel UI ──
 function updateNbhdCount(){
   const el=document.getElementById('nbhd-count');
   if(el) el.textContent = neighbourhoods.length ? (neighbourhoods.length+' neighbourhood'+(neighbourhoods.length>1?'s':'')) : 'none yet';
   const sec=document.getElementById('nbhd-section');
-  if(sec) sec.style.display = neighbourhoods.length ? 'block':'block'; // always visible once populated path used
+  if(sec) sec.style.display = neighbourhoods.length ? 'block' : 'none';
 }
 
 function openNbhdPanel(open){
@@ -1258,11 +1443,13 @@ function renderNbhdList(){
     const lbl = (nb.name?nb.name:'Neighbourhood '+nb.id);
     const vis = (!nbhdFilter || nbhdFilter.has(nb.id));
     return `<div class="nbhd-row${sel?' sel':''}" style="opacity:${vis?1:0.4}">
-      <span class="nbhd-dot" style="background:${dot}"></span>
+      <span class="nbhd-dot" style="background:${dot}" title="${nb.status==='analysed'?'analysed':'not analysed yet'}"></span>
       <span class="nbhd-id">#${nb.id}</span>
-      <span class="nbhd-name" onclick="selectNeighbourhood(${nb.id})" title="click to zoom">${lbl}</span>
+      <span class="nbhd-name" onclick="selectNeighbourhood(${nb.id})" title="Make this the active study area, then hit Run">${lbl}</span>
+      ${sel?'<span class="nbhd-active-badge" title="active study area">● active</span>':''}
       <span class="nbhd-area">${fmtArea(nb.area)}</span>
       <span class="nbhd-acts">
+        ${nb.status==='analysed'?`<button title="View this result" onclick="showSingleResult(${nb.id})">👁</button>`:''}
         <button title="Rename" onclick="renameNeighbourhood(${nb.id})">✎</button>
         <button title="Remove" onclick="removeNeighbourhood(${nb.id})">✕</button>
       </span>
@@ -1643,7 +1830,11 @@ function updateSteps(){
   const s1=document.getElementById('step-1'), s2=document.getElementById('step-2'),
         s3=document.getElementById('step-3'), s4=document.getElementById('step-4');
   if(!s1) return;
-  const set=(el,cls)=>{ el.classList.remove('locked','active','done'); el.classList.add(cls); };
+  const set=(el,cls)=>{
+    if(el.classList.contains(cls)) return; // already in this state — preserve manual open/collapse
+    el.classList.remove('locked','active','done','man-collapsed','man-open');
+    el.classList.add(cls);
+  };
 
   // Step 1 — data
   if(hasNetwork){ set(s1,'done'); } else { set(s1,'active'); }
@@ -1671,7 +1862,10 @@ function updateSteps(){
   if(!hasStudy){ set(s4,'locked'); } else { set(s4,'active'); }
   // Step 5 stays locked until an analysis has been run; re-lock if study boundary cleared
   const s5=document.getElementById('step-5');
-  if(s5 && (!window._analysed || !hasStudy)){ s5.classList.remove('active','done'); s5.classList.add('locked'); if(!hasStudy) window._analysed=false; }
+  if(s5){
+    if(!window._analysed || !hasStudy){ s5.classList.remove('active','done'); s5.classList.add('locked'); if(!hasStudy) window._analysed=false; }
+    else { s5.classList.remove('locked','done'); s5.classList.add('active'); }
+  }
   const stepRun=document.getElementById('step-run-btn');
   if(stepRun){ stepRun.disabled=!hasStudy; }
 }
@@ -3893,6 +4087,20 @@ async function runAnalysis(){
   updateStats(sSegs);
   // Reveal Step 5 (close network gaps) now that an analysis exists
   window._analysed=true;
+  // If the active study area came from a neighbourhood tile, mark that tile analysed (green dot)
+  // and STORE its full graded result so it can be re-viewed / combined later (Stage 5).
+  if(typeof selectedNbhdId!=='undefined' && selectedNbhdId!=null && typeof neighbourhoods!=='undefined'){
+    const _nb = neighbourhoods.find(n=>n.id===selectedNbhdId);
+    if(_nb){
+      _nb.status='analysed';
+      try{
+        // deep-ish copy of the graded core segments (geometry + grade fields) for re-render
+        _nb.result = { segs: segments.map(s=>cloneSeg(s)), stats: captureStats(segments), at: Date.now() };
+      }catch(e){ _nb.result = { segs: segments.slice(), stats:null, at:Date.now() }; }
+      if(typeof drawNeighbourhoodLayer==='function'){ _nb.layer=null; drawNeighbourhoodLayer(_nb); }
+      if(typeof renderNbhdList==='function') renderNbhdList();
+    }
+  }
   const s5=document.getElementById('step-5'); if(s5){ s5.classList.remove('locked'); s5.classList.add('active'); }
   const st5=document.getElementById('status-5'); if(st5){ st5.textContent='Ready — click to identify gap closers'; st5.className='step-status pending'; }
   // Reset brush and gap-closer state for the new result
@@ -4087,6 +4295,21 @@ function deleteSession(){
   renderSessionList();
   showToast('Session "'+sname+'" deleted');
 }
+
+/* Accordion: click any reached step's header to expand/collapse it.
+   - done step  → toggle 'man-open'   (open it back up / close again)
+   - active step→ toggle 'man-collapsed' (collapse the current step / reopen)
+   - locked step→ ignored (not yet reachable) */
+document.addEventListener('click', function(e){
+  const ico = e.target.closest && e.target.closest('.step-info-ico');
+  if(ico) return; // let the ⓘ popup handle its own click
+  const tr = e.target.closest && e.target.closest('.step-title-row');
+  if(!tr) return;
+  const step = tr.closest('.step');
+  if(!step || step.classList.contains('locked')) return;
+  if(step.classList.contains('active')) step.classList.toggle('man-collapsed');
+  else if(step.classList.contains('done')) step.classList.toggle('man-open');
+});
 
 /* ── INIT ── */
 renderCities();renderAtts();renderAttLayers();renderSavedBoundsList();
