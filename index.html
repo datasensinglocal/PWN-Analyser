@@ -1433,6 +1433,63 @@ function fmtArea(km2){
   return km2<1 ? Math.round(km2*100)/100+' km²' : (Math.round(km2*10)/10)+' km²';
 }
 
+// ── Edit a neighbourhood tile's boundary (draggable vertices) ──
+let nbhdEditId = null;        // which tile is currently in edit mode
+let nbhdEditMarkers = [];
+
+function editNeighbourhood(id){
+  // toggle: if already editing this one, finish; else start
+  if(nbhdEditId===id){ finishNbhdEdit(); return; }
+  finishNbhdEdit(); // close any other
+  const nb = neighbourhoods.find(n=>n.id===id);
+  if(!nb){ return; }
+  nbhdEditId = id;
+  selectedNbhdId = id;
+  // pts in Leaflet [lat,lon]
+  const pts = nb.ring.map(c=>[c[1],c[0]]);
+  // redraw the tile prominently while editing
+  if(nb.layer && nbhdLayerGroup){ nbhdLayerGroup.removeLayer(nb.layer); nb.layer=null; }
+  let editPoly = L.polygon(pts,{color:'#c8a96e',weight:2,fillColor:'#c8a96e',fillOpacity:0.08,dashArray:'5,3'}).addTo(map);
+  nb._editPoly = editPoly;
+  pts.forEach((pt,idx)=>{
+    const m=L.circleMarker(pt,{radius:6,fillColor:'#c8a96e',color:'#fff',weight:2,fillOpacity:.95,zIndexOffset:1000}).addTo(map);
+    m.on('mousedown',e=>{
+      L.DomEvent.stopPropagation(e); map.dragging.disable();
+      const move=e2=>{
+        pts[idx]=[e2.latlng.lat,e2.latlng.lng];
+        m.setLatLng(e2.latlng);
+        editPoly.setLatLngs(pts);
+      };
+      map.on('mousemove',move);
+      map.once('mouseup',()=>{
+        map.dragging.enable(); map.off('mousemove',move);
+        // persist back into nb.ring as [lon,lat]
+        nb.ring = pts.map(p=>[p[1],p[0]]);
+        try{ nb.area = estimateAreaKm2(nb.ring.map(c=>[c[1],c[0]])); }catch(e){}
+        // editing the boundary invalidates a stored result
+        if(nb.status==='analysed'){ nb.status='pending'; nb.result=null; }
+        renderNbhdList();
+      });
+    });
+    nbhdEditMarkers.push(m);
+  });
+  showToast('Editing #'+nb.id+' — drag the dots, then click ✓ Done');
+  renderNbhdList();
+  try{ map.fitBounds(editPoly.getBounds(),{padding:[50,50]}); }catch(e){}
+}
+
+function finishNbhdEdit(){
+  if(nbhdEditId==null) return;
+  const nb = neighbourhoods.find(n=>n.id===nbhdEditId);
+  nbhdEditMarkers.forEach(m=>map.removeLayer(m)); nbhdEditMarkers=[];
+  if(nb){
+    if(nb._editPoly){ map.removeLayer(nb._editPoly); nb._editPoly=null; }
+    nb.layer=null; drawNeighbourhoodLayer(nb);   // redraw normal tile from updated ring
+  }
+  nbhdEditId=null;
+  renderNbhdList();
+}
+
 function renderNbhdList(){
   const host=document.getElementById('nbhd-list');
   if(!host) return;
@@ -1450,6 +1507,7 @@ function renderNbhdList(){
       <span class="nbhd-area">${fmtArea(nb.area)}</span>
       <span class="nbhd-acts">
         ${nb.status==='analysed'?`<button title="View this result" onclick="showSingleResult(${nb.id})">👁</button>`:''}
+        <button title="${nbhdEditId===nb.id?'Done editing':'Edit boundary (drag vertices)'}" onclick="editNeighbourhood(${nb.id})" style="${nbhdEditId===nb.id?'color:#c8a96e;background:#33301a':''}">${nbhdEditId===nb.id?'✓':'✐'}</button>
         <button title="Rename" onclick="renameNeighbourhood(${nb.id})">✎</button>
         <button title="Remove" onclick="removeNeighbourhood(${nb.id})">✕</button>
       </span>
@@ -1842,9 +1900,10 @@ function updateSteps(){
   if(st1){ st1.textContent = hasNetwork ? 'Network loaded' : 'No data loaded yet';
            st1.className = 'step-status'+(hasNetwork?'':' pending'); }
 
-  // Step 2 — study boundary (unlocked once data is in)
+  // Step 2 — study boundary (unlocked once data is in).
+  // Stays ACTIVE (open) once a boundary exists so it remains editable — it does not
+  // auto-collapse to 'done', which previously made the flow jump past editing.
   if(!hasNetwork){ set(s2,'locked'); }
-  else if(hasStudy){ set(s2,'done'); }
   else { set(s2,'active'); }
   const st2=document.getElementById('status-2');
   if(st2){ st2.textContent = hasStudy ? 'Study boundary set' : 'Waiting for a study boundary';
