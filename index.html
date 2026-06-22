@@ -129,6 +129,7 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
 #map-panel{flex:1;position:relative}
 #map{width:100%;height:100%}
 .map-controls{position:absolute;top:14px;right:14px;z-index:500;display:flex;flex-direction:column;gap:6px;align-items:flex-end}
+.map-controls .basemap-switcher{flex-direction:row}
 .map-btn{background:rgba(13,13,13,.92);border:1px solid #2a2a2a;border-radius:4px;padding:7px 13px;font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;cursor:pointer;color:#666;font-family:inherit;transition:all .15s}
 .map-btn:hover{border-color:#c8a96e;color:#c8a96e}
 .base-switcher{display:flex;gap:3px;background:rgba(13,13,13,.92);border:1px solid #2a2a2a;border-radius:4px;padding:3px}
@@ -209,6 +210,17 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
 .phase-sub{font-size:10px;color:#555;font-family:monospace;margin-top:3px}
 .boundary-group{display:flex;flex-direction:column;gap:4px;margin-bottom:2px}
 .boundary-actions{display:flex;gap:4px}
+.nbhd-row{display:flex;align-items:center;gap:6px;padding:4px 5px;border-radius:4px;font-size:11px;color:#ccc}
+.nbhd-row:hover{background:#1a1a1a}
+.nbhd-row.sel{background:#23201a;outline:1px solid #c8a96e}
+.nbhd-dot{width:8px;height:8px;border-radius:50%;flex:0 0 auto}
+.nbhd-id{color:#888;font-family:monospace;flex:0 0 auto;min-width:26px}
+.nbhd-name{flex:1;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.nbhd-name:hover{color:#fff;text-decoration:underline}
+.nbhd-area{color:#777;font-size:10px;font-family:monospace;flex:0 0 auto}
+.nbhd-acts{display:flex;gap:2px;flex:0 0 auto}
+.nbhd-acts button{background:none;border:none;color:#666;cursor:pointer;font-size:11px;padding:2px 4px;border-radius:3px}
+.nbhd-acts button:hover{color:#fff;background:#333}
 .bnd-act{height:22px;padding:0 8px;font-size:9px}
 .bnd-del:hover{border-color:#c84a4a!important;color:#c84a4a!important}
 .bnd-select{background:rgba(13,13,13,.92);border:1px solid #2a2a2a;border-radius:4px;color:#888;font-size:10px;font-family:inherit;height:26px;padding:0 6px;outline:none;cursor:pointer;width:100%}
@@ -337,8 +349,61 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
           <div class="step-num"><span>2</span></div>
           <div class="step-body">
             <div class="step-title-row"><span class="step-title">Draw study boundary</span><span class="step-info-ico" id="step-info-2" onclick="toggleStepInfo(2)" title="What to do">i</span></div>
-            <div class="step-desc" id="step-desc-2">On the map, use <b>Draw Study Area</b> (top-right) to outline the neighbourhood to analyse — or drop a 2 km² module. This is the area that will be graded.</div>
+            <div class="step-desc" id="step-desc-2">Outline the neighbourhood to analyse with <b>Draw Study Area</b>, drop a 2 km² module, or upload a boundary. Or build a whole set of neighbourhoods below (draw + add, or import a mesh).</div>
             <div class="step-status pending" id="status-2">Waiting for a study boundary</div>
+
+            <!-- Study area controls -->
+            <div class="boundary-group" id="study-group" style="margin-top:8px">
+              <div style="display:flex;gap:5px;align-items:stretch">
+                <button class="map-btn study" id="study-btn" onclick="startDraw('study')" style="flex:1">Draw Study Area</button>
+                <button class="map-btn bnd-reset" onclick="resetBoundary('study')" title="Reset study area" style="flex:0 0 auto;padding:0 9px">↺</button>
+              </div>
+              <div style="display:flex;gap:5px;align-items:stretch;margin-top:5px">
+                <input type="file" id="study-bnd-file" accept=".geojson,.json,.kml" style="display:none" onchange="loadBoundaryFile(this,'study')"/>
+                <button class="map-btn" onclick="document.getElementById('study-bnd-file').click()" title="Upload a study-area.geojson or .kml boundary" style="flex:1;font-size:9px">⬆ Upload Boundary</button>
+                <button class="map-btn" id="suggest-btn" onclick="toggleSuggestModule()" title="Show a 2 km² suggested module at the map centre" style="flex:1;font-size:9px">Drop 2 km² Module</button>
+              </div>
+              <div class="boundary-actions" id="study-actions" style="display:none;margin-top:5px">
+                <button class="map-btn bnd-act" onclick="saveBoundary('study')" title="Save this boundary">Save</button>
+                <button class="map-btn bnd-act" onclick="addCurrentBoundaryAsNbhd()" title="Add the current boundary to the neighbourhood set">＋ Add as neighbourhood</button>
+              </div>
+            </div>
+
+            <!-- Saved boundaries -->
+            <div class="boundary-group" id="saved-bounds-group" style="display:none;margin-top:5px">
+              <select class="bnd-select" id="saved-bounds-select">
+                <option value="">— Saved boundaries —</option>
+              </select>
+              <button class="map-btn bnd-act" onclick="loadSavedBoundary()" title="Load selected boundary">Load</button>
+              <button class="map-btn bnd-act bnd-del" onclick="deleteSavedBoundary()" title="Delete">Del</button>
+            </div>
+
+            <!-- NEIGHBOURHOODS (multi-tile set) -->
+            <div id="nbhd-section" style="margin-top:10px;border-top:1px solid #2a2a2a;padding-top:9px">
+              <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer" onclick="openNbhdPanel()">
+                <span style="font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#c8a96e;font-weight:700">Neighbourhood set <span id="nbhd-caret">▾</span></span>
+                <span id="nbhd-count" style="font-size:10px;color:#888">none yet</span>
+              </div>
+              <div id="nbhd-body" style="margin-top:7px">
+                <div style="display:flex;gap:5px;align-items:stretch;margin-bottom:5px">
+                  <input type="file" id="nbhd-import-file" accept=".geojson,.json,.kml" style="display:none" onchange="importNeighbourhoods(this)"/>
+                  <button class="map-btn" onclick="document.getElementById('nbhd-import-file').click()" title="Import one polygon, or a mesh (many tiles) — GeoJSON/KML" style="flex:1;font-size:9px">⬇ Import polygon / mesh</button>
+                  <button class="map-btn" onclick="toggleMeshHelp()" title="What is a mesh?" style="flex:0 0 auto;padding:0 9px;font-size:9px">?</button>
+                </div>
+                <div id="mesh-help" style="display:none;font-size:10px;color:#aaa;line-height:1.5;background:#161616;border:1px solid #2a2a2a;border-radius:5px;padding:8px;margin-bottom:6px">
+                  A <b>mesh</b> is a set of adjacent neighbourhood tiles that share edges — like the carved city tiles. Importing a mesh adds every tile at once, each as its own polygon with an ID. A single polygon imports as one neighbourhood. After editing, use <b>Renumber</b> to tidy the IDs.
+                </div>
+                <div style="display:flex;gap:5px;margin-bottom:5px">
+                  <input id="nbhd-filter-input" oninput="applyNbhdFilter()" placeholder="filter: id, name, 3-7…" style="flex:1;font-size:10px;padding:4px 6px;background:#141414;border:1px solid #2a2a2a;border-radius:4px;color:#e8e8e8"/>
+                  <button class="map-btn" onclick="clearNbhdFilter()" title="Clear filter" style="flex:0 0 auto;padding:0 8px;font-size:9px">✕</button>
+                </div>
+                <div id="nbhd-list" style="max-height:200px;overflow-y:auto;margin:6px 0"></div>
+                <div style="display:flex;gap:5px">
+                  <button class="map-btn" onclick="renumberNeighbourhoods()" title="Renumber IDs top-to-bottom" style="flex:1;font-size:9px">↻ Renumber</button>
+                  <button class="map-btn" onclick="clearAllNeighbourhoods()" title="Remove all" style="flex:0 0 auto;padding:0 9px;font-size:9px">Clear all</button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -349,6 +414,17 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
             <div class="step-title-row"><span class="step-title">Set global context</span><span class="step-info-ico" id="step-info-3" onclick="toggleStepInfo(3)" title="What to do">i</span></div>
             <div class="step-desc" id="step-desc-3">A surrounding <b>analysis buffer</b> is generated automatically (≈1.25 km) so streets near the edge are measured correctly. Adjust it with <b>Draw Global Context</b> / <b>Auto 1.25 km</b> if needed.</div>
             <div class="step-status pending" id="status-3">Using the auto buffer</div>
+            <!-- Context controls -->
+            <div class="boundary-group" id="ctx-group" style="margin-top:8px">
+              <div style="display:flex;gap:5px;align-items:stretch">
+                <button class="map-btn ctx" id="ctx-btn" onclick="startDraw('ctx')" style="flex:1">Draw Global Context</button>
+                <button class="map-btn bnd-reset" onclick="resetBoundary('ctx')" title="Reset global context" style="flex:0 0 auto;padding:0 9px">↺</button>
+              </div>
+              <div class="boundary-actions" id="ctx-actions" style="display:none;margin-top:5px">
+                <button class="map-btn bnd-act" onclick="autoGenerateContext()" title="Auto 1.25km buffer (15-min walk)">Auto 1.25km</button>
+                <button class="map-btn bnd-act" onclick="saveBoundary('ctx')" title="Save this boundary">Save</button>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -472,40 +548,6 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
 <div id="map-panel">
   <div id="map"></div>
   <div class="map-controls">
-    <!-- Study area controls -->
-    <div class="boundary-group" id="study-group">
-      <div style="display:flex;gap:5px;align-items:stretch">
-        <button class="map-btn study" id="study-btn" onclick="startDraw('study')" style="flex:1">Draw Study Area</button>
-        <button class="map-btn bnd-reset" onclick="resetBoundary('study')" title="Reset study area" style="flex:0 0 auto;padding:0 9px">↺</button>
-      </div>
-      <div style="display:flex;gap:5px;align-items:stretch">
-        <input type="file" id="study-bnd-file" accept=".geojson,.json,.kml" style="display:none" onchange="loadBoundaryFile(this,'study')"/>
-        <button class="map-btn" onclick="document.getElementById('study-bnd-file').click()" title="Upload a study-area.geojson or .kml boundary" style="flex:1;font-size:9px">⬆ Upload Boundary</button>
-        <button class="map-btn" id="suggest-btn" onclick="toggleSuggestModule()" title="Show a 2 km² suggested module at the map centre" style="flex:1;font-size:9px">Drop 2 km² Module</button>
-      </div>
-      <div class="boundary-actions" id="study-actions" style="display:none">
-        <button class="map-btn bnd-act" onclick="saveBoundary('study')" title="Save this boundary">Save</button>
-      </div>
-    </div>
-    <!-- Context controls -->
-    <div class="boundary-group" id="ctx-group">
-      <div style="display:flex;gap:5px;align-items:stretch">
-        <button class="map-btn ctx" id="ctx-btn" onclick="startDraw('ctx')" style="flex:1">Draw Global Context</button>
-        <button class="map-btn bnd-reset" onclick="resetBoundary('ctx')" title="Reset global context" style="flex:0 0 auto;padding:0 9px">↺</button>
-      </div>
-      <div class="boundary-actions" id="ctx-actions" style="display:none">
-        <button class="map-btn bnd-act" onclick="autoGenerateContext()" title="Auto 1.25km buffer (15-min walk)">Auto 1.25km</button>
-        <button class="map-btn bnd-act" onclick="saveBoundary('ctx')" title="Save this boundary">Save</button>
-      </div>
-    </div>
-    <!-- Saved boundaries -->
-    <div class="boundary-group" id="saved-bounds-group" style="display:none">
-      <select class="bnd-select" id="saved-bounds-select">
-        <option value="">— Saved boundaries —</option>
-      </select>
-      <button class="map-btn bnd-act" onclick="loadSavedBoundary()" title="Load selected boundary">Load</button>
-      <button class="map-btn bnd-act bnd-del" onclick="deleteSavedBoundary()" title="Delete">Del</button>
-    </div>
     <div class="basemap-switcher">
       <button class="basemap-btn active-base" data-bm="osm" onclick="switchBaseMap('osm')" title="OpenStreetMap">OSM</button>
       <button class="basemap-btn" data-bm="voyager" onclick="switchBaseMap('voyager')" title="Carto Voyager">Voyager</button>
@@ -1024,6 +1066,234 @@ function updateBoundaryAreas(){
     bEl.textContent = a!=null ? '· '+a.toFixed(2)+' km²' : '';
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// NEIGHBOURHOODS — a collection of named boundary tiles (Stage 1+2)
+// Each: {id:Number, name:String, ring:[[lon,lat],...] (open), result:null|{...},
+//        status:'pending'|'analysed', layer:L.Polygon|null, area:Number}
+// The existing single-boundary flow (bounds.study) is untouched; analysing a
+// neighbourhood will (later, Stage 3) feed its ring through that same pipeline.
+// ─────────────────────────────────────────────────────────────────────────
+let neighbourhoods = [];
+let nbhdSeq = 0;            // monotonic ID source
+let nbhdLayerGroup = null;  // L.LayerGroup holding all tile outlines
+let nbhdFilter = null;      // null = show all; else Set of ids to show
+
+function nbhdEnsureGroup(){
+  if(!nbhdLayerGroup){ nbhdLayerGroup = L.layerGroup().addTo(map); }
+  return nbhdLayerGroup;
+}
+
+// Extract ALL polygon rings from a parsed GeoJSON (for mesh import).
+// Returns array of {ring:[[lon,lat],...], name:String|null}.
+function extractAllPolygons(gj){
+  const out=[];
+  const feats = gj.type==='FeatureCollection' ? (gj.features||[])
+              : gj.type==='Feature' ? [gj] : [{type:'Feature',geometry:gj,properties:{}}];
+  for(const f of feats){
+    const g=f.geometry; if(!g) continue;
+    const props=f.properties||{};
+    const nm = props.name || props.Name || props.NAME || props.nbhd_id || props.id || null;
+    if(g.type==='Polygon' && g.coordinates && g.coordinates[0]){
+      out.push({ring:g.coordinates[0].map(c=>[c[0],c[1]]), name:nm!=null?String(nm):null});
+    } else if(g.type==='MultiPolygon' && g.coordinates){
+      g.coordinates.forEach((poly,i)=>{
+        if(poly && poly[0]) out.push({ring:poly[0].map(c=>[c[0],c[1]]), name: nm!=null?String(nm)+(g.coordinates.length>1?(' ('+(i+1)+')'):''):null});
+      });
+    } else if(g.type==='LineString' && g.coordinates && g.coordinates.length>=4){
+      // closed linestring acts as a ring
+      const c=g.coordinates; const a=c[0], b=c[c.length-1];
+      if(a[0]===b[0]&&a[1]===b[1]) out.push({ring:c.slice(0,-1).map(p=>[p[0],p[1]]), name:nm!=null?String(nm):null});
+    }
+  }
+  return out;
+}
+
+function dropClosing(ring){
+  if(ring.length>1){ const a=ring[0],b=ring[ring.length-1]; if(a[0]===b[0]&&a[1]===b[1]) return ring.slice(0,-1); }
+  return ring;
+}
+
+function addNeighbourhood(ring, name){
+  ring = dropClosing(ring);
+  if(!ring || ring.length<3) return null;
+  const id = ++nbhdSeq;
+  let area = null;
+  try{ area = estimateAreaKm2(ring.map(c=>[c[1],c[0]])); }catch(e){}
+  const nb = {id, name: name || null, ring, result:null, status:'pending', layer:null, area};
+  neighbourhoods.push(nb);
+  drawNeighbourhoodLayer(nb);
+  return nb;
+}
+
+function nbhdColor(nb){
+  if(nb.status==='analysed') return '#3a9a5a';
+  return '#c8a96e';
+}
+
+function drawNeighbourhoodLayer(nb){
+  nbhdEnsureGroup();
+  if(nb.layer){ nbhdLayerGroup.removeLayer(nb.layer); nb.layer=null; }
+  // respect filter
+  if(nbhdFilter && !nbhdFilter.has(nb.id)) return;
+  const ll = nb.ring.map(c=>[c[1],c[0]]);
+  const col = nbhdColor(nb);
+  const poly = L.polygon(ll,{color:col, weight:1.5, fillColor:col, fillOpacity:0.05});
+  poly.bindTooltip('#'+nb.id+(nb.name?(' · '+nb.name):''), {sticky:true});
+  poly.on('click', ()=>selectNeighbourhood(nb.id));
+  nb.layer = poly; nbhdLayerGroup.addLayer(poly);
+}
+
+function redrawAllNeighbourhoods(){
+  if(nbhdLayerGroup){ nbhdLayerGroup.clearLayers(); }
+  neighbourhoods.forEach(nb=>{ nb.layer=null; drawNeighbourhoodLayer(nb); });
+}
+
+let selectedNbhdId = null;
+function selectNeighbourhood(id){
+  selectedNbhdId = id;
+  const nb = neighbourhoods.find(n=>n.id===id);
+  if(nb && nb.layer){
+    try{ map.fitBounds(nb.layer.getBounds(),{padding:[40,40]}); }catch(e){}
+  }
+  renderNbhdList();
+}
+
+function removeNeighbourhood(id){
+  const i = neighbourhoods.findIndex(n=>n.id===id);
+  if(i<0) return;
+  const nb = neighbourhoods[i];
+  if(nb.layer && nbhdLayerGroup) nbhdLayerGroup.removeLayer(nb.layer);
+  neighbourhoods.splice(i,1);
+  if(selectedNbhdId===id) selectedNbhdId=null;
+  renderNbhdList(); updateNbhdCount();
+}
+
+function renameNeighbourhood(id){
+  const nb = neighbourhoods.find(n=>n.id===id); if(!nb) return;
+  const v = prompt('Name for neighbourhood #'+nb.id+':', nb.name||'');
+  if(v===null) return;
+  nb.name = v.trim() || null;
+  if(nb.layer){ nb.layer.unbindTooltip(); nb.layer.bindTooltip('#'+nb.id+(nb.name?(' · '+nb.name):''), {sticky:true}); }
+  renderNbhdList();
+}
+
+// Add the current drawn/loaded study boundary as a neighbourhood
+function addCurrentBoundaryAsNbhd(){
+  if(!bounds.study || bounds.study.length<3){ showToast('Draw or load a study boundary first'); return; }
+  const nb = addNeighbourhood(JSON.parse(JSON.stringify(bounds.study)), null);
+  if(nb){ showToast('Added as neighbourhood #'+nb.id); renderNbhdList(); updateNbhdCount(); openNbhdPanel(true); }
+}
+
+// Import one polygon OR a mesh (many polygons) from a file
+function importNeighbourhoods(input){
+  const file = input.files[0]; if(!file) return;
+  parseFile(file,(err,gj)=>{
+    if(err){ showToast(err); return; }
+    const polys = extractAllPolygons(gj);
+    if(!polys.length){ showToast('No polygons found in that file'); return; }
+    let added=0;
+    polys.forEach(p=>{ if(addNeighbourhood(p.ring, p.name)) added++; });
+    showToast('Imported '+added+' '+(added===1?'polygon':'polygons (mesh)')+' as neighbourhoods');
+    renderNbhdList(); updateNbhdCount(); openNbhdPanel(true);
+    // fit to all
+    try{ const grp=L.featureGroup(neighbourhoods.map(n=>n.layer).filter(Boolean)); map.fitBounds(grp.getBounds(),{padding:[30,30]}); }catch(e){}
+  });
+  input.value='';
+}
+
+function clearAllNeighbourhoods(){
+  if(!neighbourhoods.length) return;
+  if(!confirm('Remove all '+neighbourhoods.length+' neighbourhoods?')) return;
+  if(nbhdLayerGroup) nbhdLayerGroup.clearLayers();
+  neighbourhoods=[]; selectedNbhdId=null; nbhdFilter=null;
+  renderNbhdList(); updateNbhdCount();
+}
+
+// Renumber IDs spatially (top-to-bottom, then left-to-right) for tidy output
+function renumberNeighbourhoods(){
+  if(!neighbourhoods.length) return;
+  const withC = neighbourhoods.map(nb=>{
+    let cx=0,cy=0; nb.ring.forEach(p=>{cx+=p[0];cy+=p[1];});
+    return {nb, cx:cx/nb.ring.length, cy:cy/nb.ring.length};
+  });
+  // sort by latitude band (north first) then longitude
+  withC.sort((a,b)=> (b.cy - a.cy) || (a.cx - b.cx));
+  nbhdSeq = 0;
+  withC.forEach(o=>{ o.nb.id = ++nbhdSeq; });
+  neighbourhoods = withC.map(o=>o.nb);
+  redrawAllNeighbourhoods(); renderNbhdList();
+  showToast('Renumbered '+neighbourhoods.length+' neighbourhoods top-to-bottom');
+}
+
+// ── Neighbourhood panel UI ──
+function updateNbhdCount(){
+  const el=document.getElementById('nbhd-count');
+  if(el) el.textContent = neighbourhoods.length ? (neighbourhoods.length+' neighbourhood'+(neighbourhoods.length>1?'s':'')) : 'none yet';
+  const sec=document.getElementById('nbhd-section');
+  if(sec) sec.style.display = neighbourhoods.length ? 'block':'block'; // always visible once populated path used
+}
+
+function openNbhdPanel(open){
+  const body=document.getElementById('nbhd-body');
+  const car=document.getElementById('nbhd-caret');
+  if(!body) return;
+  const show = open===undefined ? (body.style.display==='none') : open;
+  body.style.display = show ? 'block':'none';
+  if(car) car.textContent = show ? '▾':'▸';
+}
+
+function fmtArea(km2){
+  if(km2==null) return '—';
+  return km2<1 ? Math.round(km2*100)/100+' km²' : (Math.round(km2*10)/10)+' km²';
+}
+
+function renderNbhdList(){
+  const host=document.getElementById('nbhd-list');
+  if(!host) return;
+  if(!neighbourhoods.length){ host.innerHTML='<div style="font-size:11px;color:#777;padding:8px 0">No neighbourhoods yet. Draw a boundary and “＋ Add”, or import a polygon / mesh.</div>'; return; }
+  const rows = neighbourhoods.map(nb=>{
+    const sel = nb.id===selectedNbhdId;
+    const dot = nb.status==='analysed' ? '#3a9a5a' : '#c8a96e';
+    const lbl = (nb.name?nb.name:'Neighbourhood '+nb.id);
+    const vis = (!nbhdFilter || nbhdFilter.has(nb.id));
+    return `<div class="nbhd-row${sel?' sel':''}" style="opacity:${vis?1:0.4}">
+      <span class="nbhd-dot" style="background:${dot}"></span>
+      <span class="nbhd-id">#${nb.id}</span>
+      <span class="nbhd-name" onclick="selectNeighbourhood(${nb.id})" title="click to zoom">${lbl}</span>
+      <span class="nbhd-area">${fmtArea(nb.area)}</span>
+      <span class="nbhd-acts">
+        <button title="Rename" onclick="renameNeighbourhood(${nb.id})">✎</button>
+        <button title="Remove" onclick="removeNeighbourhood(${nb.id})">✕</button>
+      </span>
+    </div>`;
+  }).join('');
+  host.innerHTML = rows;
+}
+
+function applyNbhdFilter(){
+  const q=(document.getElementById('nbhd-filter-input')||{}).value||'';
+  const t=q.trim().toLowerCase();
+  if(!t){ nbhdFilter=null; }
+  else {
+    nbhdFilter=new Set();
+    neighbourhoods.forEach(nb=>{
+      const hay=('#'+nb.id+' '+(nb.name||'')+' '+('neighbourhood '+nb.id)).toLowerCase();
+      // support comma-separated ids/names and ranges like 3-7
+      const ok = t.split(',').some(tok=>{
+        tok=tok.trim(); if(!tok) return false;
+        const range=tok.match(/^(\d+)\s*-\s*(\d+)$/);
+        if(range){ const a=+range[1],b=+range[2]; return nb.id>=Math.min(a,b)&&nb.id<=Math.max(a,b); }
+        return hay.includes(tok);
+      });
+      if(ok) nbhdFilter.add(nb.id);
+    });
+  }
+  redrawAllNeighbourhoods(); renderNbhdList();
+}
+function clearNbhdFilter(){ const i=document.getElementById('nbhd-filter-input'); if(i)i.value=''; nbhdFilter=null; redrawAllNeighbourhoods(); renderNbhdList(); }
+
+function toggleMeshHelp(){ const e=document.getElementById('mesh-help'); if(e) e.style.display = e.style.display==='none'?'block':'none'; }
 
 function extractBoundaryRing(gj){
   // Pull the first polygon's outer ring from a parsed GeoJSON as [[lon,lat],...].
@@ -3822,6 +4092,7 @@ function deleteSession(){
 renderCities();renderAtts();renderAttLayers();renderSavedBoundsList();
 updateSteps();
 if(typeof syncRadius==='function') syncRadius();
+if(typeof renderNbhdList==='function'){ renderNbhdList(); updateNbhdCount(); }
 </script>
 </body>
 </html>
