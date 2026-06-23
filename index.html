@@ -92,12 +92,10 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
 .exp-tier-lbl:hover{color:#e2ddd6}
 .exp-tier-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
 
-/* analysis mode radio */
-.mode-radio-lbl{display:flex;align-items:flex-start;gap:9px;cursor:pointer;padding:7px 8px;border:1px solid #1e1e1e;border-radius:5px;background:#111;transition:border-color .15s;user-select:none}
-.mode-radio-lbl:hover{border-color:#3a3a3a}
-.mode-radio-lbl.active{border-color:#c8a96e;background:#181410}
-.mode-radio-dot{width:11px;height:11px;border-radius:50%;border:2px solid #444;flex-shrink:0;margin-top:2px;transition:all .15s}
-.mode-radio-dot.active{border-color:#c8a96e;background:#c8a96e;box-shadow:0 0 0 3px rgba(200,169,110,.15)}
+/* analysis mode toggle buttons in Step 4 */
+.mode-tog-btn{flex:1;padding:8px 6px;background:#141414;border:1px solid #2a2a2a;border-radius:5px;color:#666;cursor:pointer;font-family:inherit;text-align:center;transition:all .15s;line-height:1.2}
+.mode-tog-btn:hover{border-color:#555;color:#aaa}
+.mode-tog-btn.active{background:#181410;border-color:#c8a96e;color:#c8a96e}
 
 /* weights */
 .ss-block{background:#111;border:1px solid #1c1c1c;border-radius:4px;padding:9px 11px}
@@ -322,7 +320,7 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
     <div class="sb-eyebrow">Urban Mobility Analysis</div>
     <div class="sb-title">PWN Analyser</div>
     <div class="sb-sub">Priority Walking Network · Space Syntax + Trip Attractors</div>
-    <div class="sb-version" id="sb-version">v3.1 · dual-radius SS · 4 analysis modes · 2026-06-23</div>
+    <div class="sb-version" id="sb-version">v3.2 · 2-mode switcher in Step 4 · 2026-06-23</div>
   </div>
   <div class="sb-tabs">
     <button class="tab active" onclick="switchTab('data')">Data</button>
@@ -481,9 +479,23 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
           <div class="step-num"><span>4</span></div>
           <div class="step-body">
             <div class="step-title-row"><span class="step-title">Run PWN Analyser</span><span class="step-info-ico" id="step-info-4" onclick="toggleStepInfo(4)" title="What to do">i</span></div>
-            <div class="step-desc" id="step-desc-4">Compute the Space Syntax measures and destination proximity, then grade the network into the four PWN tiers.</div>
+            <div class="step-desc" id="step-desc-4">Compute Space Syntax measures and destination proximity at both walking and sub-city scale, then grade the network.</div>
             <div class="step-action">
               <button class="btn" id="step-run-btn" style="width:100%;background:#c8a96e;color:#0d0d0d;font-weight:700;border:none;padding:10px" onclick="runAnalysis()">▶ Run PWN Analysis</button>
+            </div>
+            <!-- Mode switcher — revealed after run -->
+            <div id="mode-switcher" style="display:none;margin-top:10px;border-top:1px solid #1e1e1e;padding-top:10px">
+              <div style="font-size:9px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#555;margin-bottom:7px">View as</div>
+              <div style="display:flex;gap:6px">
+                <button class="mode-tog-btn active" id="mtb-composite" onclick="setAnalysisMode('composite')" style="flex:1">
+                  <div style="font-size:10px;font-weight:700">Composite</div>
+                  <div style="font-size:9px;opacity:.7;margin-top:2px">SS + proximity blend</div>
+                </button>
+                <button class="mode-tog-btn" id="mtb-diagnostic" onclick="setAnalysisMode('diagnostic')" style="flex:1">
+                  <div style="font-size:10px;font-weight:700">Investment</div>
+                  <div style="font-size:9px;opacity:.7;margin-top:2px">Safety · Access · Junctions</div>
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -564,28 +576,6 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
 
     <!-- WEIGHTS TAB -->
     <div id="tab-weights" style="display:none">
-      <div class="section">
-        <div class="sec-label">Analysis Mode</div>
-        <div style="display:flex;flex-direction:column;gap:5px">
-          <label class="mode-radio-lbl" onclick="setAnalysisMode('composite')">
-            <span class="mode-radio-dot" id="mrd-composite"></span>
-            <div><div style="color:#e2ddd6;font-size:11px;font-weight:600">Composite Score</div><div style="color:#555;font-size:9px;line-height:1.4">Percentile-banded blend of SS + proximity. Current default.</div></div>
-          </label>
-          <label class="mode-radio-lbl" onclick="setAnalysisMode('diagnostic')">
-            <span class="mode-radio-dot" id="mrd-diagnostic"></span>
-            <div><div style="color:#e2ddd6;font-size:11px;font-weight:600">Investment Diagnostic</div><div style="color:#555;font-size:9px;line-height:1.4">Tiers from condition logic: large-radius Choice → Safety · walking Integration + proximity → Access · connectivity hotspots → Junctions.</div></div>
-          </label>
-          <label class="mode-radio-lbl" onclick="setAnalysisMode('ss_only')">
-            <span class="mode-radio-dot" id="mrd-ss_only"></span>
-            <div><div style="color:#e2ddd6;font-size:11px;font-weight:600">Space Syntax Only</div><div style="color:#555;font-size:9px;line-height:1.4">Pure structural network — no proximity. Reveals the configuration independent of where destinations happen to be.</div></div>
-          </label>
-          <label class="mode-radio-lbl" onclick="setAnalysisMode('prox_only')">
-            <span class="mode-radio-dot" id="mrd-prox_only"></span>
-            <div><div style="color:#e2ddd6;font-size:11px;font-weight:600">Proximity Only</div><div style="color:#555;font-size:9px;line-height:1.4">Destination-access network only — no structural SS. Shows which streets matter purely because of what's nearby.</div></div>
-          </label>
-        </div>
-        <div id="mode-regrade-note" style="display:none;font-size:9px;color:#c8a96e;margin-top:7px;padding:6px 8px;background:#181410;border:1px solid #3a2e1a;border-radius:4px">Mode changed — <button onclick="applyModeSwitch()" style="background:none;border:none;color:#c8a96e;font-weight:700;cursor:pointer;font-size:9px;text-decoration:underline;padding:0">re-grade now</button> (no re-run needed)</div>
-      </div>
       <div class="section">
         <div class="sec-label">Analysis Radius <span style="color:#3a7a4a;font-weight:400">· walking scale</span></div>
         <div class="ss-block">
@@ -2372,6 +2362,8 @@ function updateSteps(){
     if(!window._analysed || !hasStudy){ s5.classList.remove('active','done'); s5.classList.add('locked'); if(!hasStudy) window._analysed=false; }
     else { s5.classList.remove('locked','done'); s5.classList.add('active'); }
   }
+  const ms=document.getElementById('mode-switcher');
+  if(ms) ms.style.display = (window._analysed && hasStudy) ? 'block':'none';
   // Step 6 — export: same unlock condition as Step 5
   const s6=document.getElementById('step-6');
   if(s6){
@@ -3608,22 +3600,22 @@ let _analysisMode = 'composite'; // default
 function getAnalysisMode(){ return _analysisMode; }
 
 function setAnalysisMode(mode){
+  // Only two valid modes now
+  if(mode!=='composite' && mode!=='diagnostic') mode='composite';
   _analysisMode = mode;
-  // Update radio UI
-  ['composite','diagnostic','ss_only','prox_only'].forEach(m=>{
-    const dot = document.getElementById('mrd-'+m);
-    const lbl = dot && dot.closest('.mode-radio-lbl');
-    if(dot) dot.classList.toggle('active', m===mode);
-    if(lbl) lbl.classList.toggle('active', m===mode);
+  // Update toggle button states
+  ['composite','diagnostic'].forEach(m=>{
+    const btn = document.getElementById('mtb-'+m);
+    if(btn) btn.classList.toggle('active', m===mode);
   });
-  // Show re-grade prompt if analysis already run
-  const note = document.getElementById('mode-regrade-note');
-  if(note) note.style.display = window._analysed ? 'block' : 'none';
+  // If analysis already run, re-grade immediately — no prompt needed
+  if(window._analysed && segments && segments.length){
+    applyModeSwitch();
+  }
 }
 
 function applyModeSwitch(){
-  // Re-grade from stored scores, update map + legend, no re-run
-  if(!segments || !segments.length){ showToast('Run an analysis first'); return; }
+  if(!segments || !segments.length){ return; }
   const ssW   = parseInt(document.getElementById('ssfw').value)/100;
   const proxW = 1-ssW;
   const p1t = parseInt(document.getElementById('p1t').value)/100;
@@ -3634,18 +3626,13 @@ function applyModeSwitch(){
   renderSegs(segments);
   updateStats(segments);
   updateModeLegend();
-  const note = document.getElementById('mode-regrade-note');
-  if(note) note.style.display = 'none';
-  showToast('Re-graded: '+_analysisMode+' mode');
+  showToast('Viewing: '+(_analysisMode==='diagnostic'?'Investment Diagnostic':'Composite Score'));
 }
 
-// Master dispatcher — called from runAnalysis and reGrade
 function applyAnalysisMode(segs, ssW, proxW, p1t, p2t, p3t, wN, maxing){
   const mode = _analysisMode;
-  if(mode==='diagnostic')    gradeDiagnostic(segs, p1t, p2t, p3t);
-  else if(mode==='ss_only')  gradeSSOnly(segs, p1t, p2t, p3t, wN, maxing);
-  else if(mode==='prox_only') gradeProxOnly(segs, p1t, p2t, p3t);
-  else                        grade(segs, ssW, proxW, p1t, p2t, p3t, wN, maxing); // composite (default)
+  if(mode==='diagnostic') gradeDiagnostic(segs, p1t, p2t, p3t);
+  else                    grade(segs, ssW, proxW, p1t, p2t, p3t, wN, maxing); // composite (default)
   updateModeLegend();
 }
 
@@ -3693,35 +3680,6 @@ function gradeDiagnostic(segs, p1t, p2t, p3t){
   });
 }
 
-// ── MODE 3: Space Syntax Only ───────────────────
-function gradeSSOnly(segs, p1t, p2t, p3t, wN, maxing){
-  if(maxing===undefined) maxing=true;
-  const wMax = Math.max(wN[0],wN[1],wN[2],1e-6);
-  const sc = [wN[0]/wMax, wN[1]/wMax, wN[2]/wMax];
-  const wSum = Math.max(wN[0]+wN[1]+wN[2],1e-6);
-  segs.forEach(s=>{
-    if(maxing) s._ss = Math.max(sc[0]*(s._coN||0), sc[1]*(s._li8||0), sc[2]*(s._ch||0));
-    else       s._ss = (wN[0]*(s._coN||0)+wN[1]*(s._li8||0)+wN[2]*(s._ch||0))/wSum;
-    s._final = s._ss; // no proximity
-  });
-  const sorted=[...segs].sort((a,b)=>b._final-a._final);
-  const e1=Math.floor(sorted.length*p1t), e2=Math.floor(sorted.length*(p1t+p2t)), e3=Math.floor(sorted.length*(p1t+p2t+p3t));
-  sorted.forEach((s,i)=>{ s._pwn=i<e1?'pwn1':i<e2?'pwn2':i<e3?'pwn3':'pwn4'; });
-  segs.forEach(s=>{ if(s._co===0&&s._pwn!=='pwn4'){s._pwn='pwn4';s._gated=true;}else s._gated=false; });
-}
-
-// ── MODE 4: Proximity Only ──────────────────────
-function gradeProxOnly(segs, p1t, p2t, p3t){
-  segs.forEach(s=>{
-    s._ss = 0;
-    s._final = Math.min(1, (s._pxRaw||0));
-  });
-  const sorted=[...segs].sort((a,b)=>b._final-a._final);
-  const e1=Math.floor(sorted.length*p1t), e2=Math.floor(sorted.length*(p1t+p2t)), e3=Math.floor(sorted.length*(p1t+p2t+p3t));
-  sorted.forEach((s,i)=>{ s._pwn=i<e1?'pwn1':i<e2?'pwn2':i<e3?'pwn3':'pwn4'; });
-  segs.forEach(s=>{ if(s._co===0&&s._pwn!=='pwn4'){s._pwn='pwn4';s._gated=true;}else s._gated=false; });
-}
-
 // ── Legend updates per mode ─────────────────────
 const MODE_LEGENDS = {
   composite: {
@@ -3734,19 +3692,7 @@ const MODE_LEGENDS = {
     pwn1:'Safety + Access — vehicle conflict & pedestrian route',
     pwn2:'Access + Junctions — approach corridor, complex crossings',
     pwn3:'Safety only / Last-leg — forced-use or isolated destination',
-    pwn4:'Background — low priority all measures'
-  },
-  ss_only: {
-    pwn1:'SS 1 — Highest structural priority',
-    pwn2:'SS 2 — Secondary structural corridor',
-    pwn3:'SS 3 — Local structural feeder',
-    pwn4:'SS 4 — Structurally peripheral'
-  },
-  prox_only: {
-    pwn1:'Prox 1 — Closest to most destinations',
-    pwn2:'Prox 2 — Secondary destination access',
-    pwn3:'Prox 3 — Tertiary destination access',
-    pwn4:'Prox 4 — Low destination proximity'
+    pwn4:'Background — low priority across all measures'
   }
 };
 
@@ -3768,13 +3714,15 @@ function updateModeLegend(){
     else el.appendChild(document.createTextNode(txt));
   });
   // Update legend title
-  const modeNames = {composite:'PWN Grade',diagnostic:'Investment Diagnostic',ss_only:'SS Structure',prox_only:'Proximity'};
+  const modeNames = {composite:'PWN Grade', diagnostic:'Investment Diagnostic'};
   const titleEl = document.querySelector('#legend .leg-title');
   if(titleEl) titleEl.textContent = modeNames[mode]||'PWN Grade';
 }
 
 function initModeUI(){
-  setAnalysisMode('composite'); // sets dot + label active state
+  // Set composite as default active toggle
+  const btn = document.getElementById('mtb-composite');
+  if(btn) btn.classList.add('active');
 }
 
 function grade(segs,ssW,proxW,p1t,p2t,p3t,wN,maxing){
@@ -4877,6 +4825,7 @@ async function runAnalysis(){
   }
   const s5=document.getElementById('step-5'); if(s5){ s5.classList.remove('locked'); s5.classList.add('active'); }
   const s6=document.getElementById('step-6'); if(s6){ s6.classList.remove('locked'); s6.classList.add('active'); }
+  const ms=document.getElementById('mode-switcher'); if(ms) ms.style.display='block';
   if(typeof updateExportPanel==='function') updateExportPanel();
   const st5=document.getElementById('status-5'); if(st5){ st5.textContent='Ready — click to identify gap closers'; st5.className='step-status pending'; }
   // Reset brush and gap-closer state for the new result
