@@ -512,7 +512,22 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
       <div class="section">
         <div class="sec-label">Space Syntax Composite</div>
         <div style="font-size:10px;color:#888;line-height:1.5;background:#141414;border:1px solid #262626;border-radius:5px;padding:9px 10px">
-          A street's Space Syntax score is the <b style="color:#c8a96e">strongest</b> of its three structural measures — Connectivity, Integration, or Choice (a weighted-max). A street is a walking priority if it's important for <i>any</i> of these reasons, so the model takes its best quality rather than averaging them (averaging flattens the differences). The three measures are treated as equal lenses; there are no sub-weights to set.
+          <label style="display:flex;align-items:center;gap:7px;cursor:pointer;margin-bottom:6px">
+            <input type="checkbox" id="ss-maxing" checked onchange="syncComposite()" style="accent-color:#c8a96e;cursor:pointer"/>
+            <span style="color:#e8e8e8;font-weight:600">Weight maxing <span style="color:#6fbf8a">(default)</span></span>
+          </label>
+          <div id="ss-max-desc">
+            A street's Space Syntax score is the <b style="color:#c8a96e">strongest</b> of its three measures — Connectivity, Integration, or Choice. A street is a walking priority if it's important for <i>any</i> reason, so the model takes its best quality rather than averaging (averaging flattens differences). Under maxing the three are equal lenses — per-measure weights don't apply.
+          </div>
+          <div id="ss-avg-desc" style="display:none">
+            <b style="color:#c8a96e">Weighted average</b> mode: the three measures are blended by the weights below. Lower a measure's weight to reduce its influence — e.g. down-weight Connectivity if you find it too noisy. Weights are relative (they're normalised).
+          </div>
+        </div>
+        <div id="ss-subweights" style="display:none;margin-top:8px">
+          <div class="w-row"><div class="w-head"><span class="w-lbl">Connectivity</span><span class="w-val" id="w-conn-v">50%</span></div><input type="range" id="w-conn" min="0" max="100" value="50" step="1" oninput="syncComposite()"/></div>
+          <div class="w-row"><div class="w-head"><span class="w-lbl">Integration</span><span class="w-val" id="w-li8-v">100%</span></div><input type="range" id="w-li8" min="0" max="100" value="100" step="1" oninput="syncComposite()"/></div>
+          <div class="w-row"><div class="w-head"><span class="w-lbl">Choice</span><span class="w-val" id="w-ch-v">100%</span></div><input type="range" id="w-ch" min="0" max="100" value="100" step="1" oninput="syncComposite()"/></div>
+          <div style="font-size:9px;color:#666;margin-top:3px">Tip: Connectivity is the noisiest measure — many users down-weight it here.</div>
         </div>
       </div>
       <div class="section">
@@ -522,10 +537,11 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
       </div>
       <div class="section">
         <div class="sec-label">PWN Grade Thresholds</div>
-        <div class="pwn-row"><div class="pwn-sw" style="background:#D0021B"></div><span class="pwn-nm">PWN 1</span><input type="range" style="flex:1" id="p1t" min="5" max="35" value="15" step="1" oninput="document.getElementById('p1v').textContent=this.value+'%'"/><span class="pwn-val" id="p1v">15%</span></div>
-        <div class="pwn-row"><div class="pwn-sw" style="background:#E87722"></div><span class="pwn-nm">PWN 2</span><input type="range" style="flex:1" id="p2t" min="10" max="40" value="25" step="1" oninput="document.getElementById('p2v').textContent=this.value+'%'"/><span class="pwn-val" id="p2v">25%</span></div>
-        <div class="pwn-row"><div class="pwn-sw" style="background:#F5C518"></div><span class="pwn-nm">PWN 3</span><input type="range" style="flex:1" id="p3t" min="10" max="40" value="30" step="1" oninput="document.getElementById('p3v').textContent=this.value+'%'"/><span class="pwn-val" id="p3v">30%</span></div>
-        <div style="font-size:10px;color:#484848;margin-top:2px">PWN 4 = remainder (spatial enclaves)</div>
+        <div class="pwn-row"><div class="pwn-sw" style="background:#D0021B"></div><span class="pwn-nm">PWN 1</span><input type="range" style="flex:1" id="p1t" min="5" max="35" value="15" step="1" oninput="syncPwnThresholds('p1t')"/><span class="pwn-val" id="p1v">15%</span></div>
+        <div class="pwn-row"><div class="pwn-sw" style="background:#E87722"></div><span class="pwn-nm">PWN 2</span><input type="range" style="flex:1" id="p2t" min="10" max="40" value="25" step="1" oninput="syncPwnThresholds('p2t')"/><span class="pwn-val" id="p2v">25%</span></div>
+        <div class="pwn-row"><div class="pwn-sw" style="background:#F5C518"></div><span class="pwn-nm">PWN 3</span><input type="range" style="flex:1" id="p3t" min="10" max="40" value="30" step="1" oninput="syncPwnThresholds('p3t')"/><span class="pwn-val" id="p3v">30%</span></div>
+        <div class="pwn-row"><div class="pwn-sw" style="background:#1565C0"></div><span class="pwn-nm">PWN 4</span><span style="flex:1;font-size:10px;color:#666;padding-left:4px">spatial enclaves — the remainder</span><span class="pwn-val" id="p4v">30%</span></div>
+        <div id="pwn-sum-note" style="font-size:10px;color:#484848;margin-top:3px">PWN 1–4 total 100%</div>
       </div>
     </div>
 
@@ -726,7 +742,7 @@ let bounds={study:null,ctx:null},boundLayers={study:null,ctx:null};
 let drawMode=null,drawPts=[],drawLine=null,drawPoly=null,drawMarkers=[],drawPreview=null;
 let pwnVis={pwn1:true,pwn2:true,pwn3:true,pwn4:true};
 let baseVis=true,connectorsOn=false;
-let segments=[],allSegments=[],corridorLayer=null,corridorsOn=false,editMarkers={study:[],ctx:[]};
+let segments=[],allSegments=[],corridorLayer=null,corridorsOn=false,editMarkers={study:[],ctx:[]},editMidMarkers={study:[],ctx:[]};
 
 /* ════════════════════════════════════════════════
    MAP INIT
@@ -983,30 +999,23 @@ function addEditNodes(type, pts){
   // pts = [[lat,lon],...] in Leaflet format
   const col = getCol(type);
   editMarkers[type].forEach(m=>map.removeLayer(m)); editMarkers[type]=[];
-  pts.forEach((pt,idx)=>{
-    const m = L.circleMarker([pt[0],pt[1]],{
-      radius:6, fillColor:col, color:'#fff', weight:2, fillOpacity:.9, zIndexOffset:900
-    }).addTo(map);
-    m.on('mousedown',e=>{
-      L.DomEvent.stopPropagation(e); map.dragging.disable();
-      map.on('mousemove',e2=>{
-        pts[idx] = [e2.latlng.lat, e2.latlng.lng]; // update in [lat,lon]
-        m.setLatLng(e2.latlng);
-        if(boundLayers[type]) map.removeLayer(boundLayers[type]);
-        boundLayers[type] = L.polygon(pts,{
-          color:col, weight:2, fillColor:col, fillOpacity:.06,
-          dashArray:type==='study'?'6,3':'4,2'
-        }).addTo(map);
-        bounds[type] = pts.map(p=>[p[1],p[0]]); // store as [lon,lat]
-        updateBoundaryAreas();
-      });
-      map.once('mouseup',()=>{
-        map.dragging.enable(); map.off('mousemove');
-        if(type==='study') setTimeout(previewSegmentCount, 200);
-      });
-    });
-    editMarkers[type].push(m);
-  });
+  if(!editMidMarkers[type]) editMidMarkers[type]=[];
+  editMidMarkers[type].forEach(m=>map.removeLayer(m)); editMidMarkers[type]=[];
+
+  const persist=()=>{
+    bounds[type] = pts.map(p=>[p[1],p[0]]); // store as [lon,lat]
+    if(boundLayers[type]) map.removeLayer(boundLayers[type]);
+    boundLayers[type] = L.polygon(pts,{ color:col, weight:2, fillColor:col, fillOpacity:.06, dashArray:type==='study'?'6,3':'4,2' }).addTo(map);
+    updateBoundaryAreas();
+    if(type==='study') setTimeout(previewSegmentCount, 200);
+  };
+  const rebuild=()=>{
+    if(boundLayers[type]) boundLayers[type].setLatLngs(pts);
+    drawVertexHandles(pts, boundLayers[type], editMarkers[type], editMidMarkers[type], persist, rebuild, col);
+  };
+  // ensure a polygon layer exists to attach handles to
+  if(!boundLayers[type]){ boundLayers[type] = L.polygon(pts,{color:col,weight:2,fillColor:col,fillOpacity:.06,dashArray:type==='study'?'6,3':'4,2'}).addTo(map); }
+  drawVertexHandles(pts, boundLayers[type], editMarkers[type], editMidMarkers[type], persist, rebuild, col);
 }
 function finishDraw(){
   const type=drawMode;
@@ -1433,47 +1442,33 @@ function fmtArea(km2){
   return km2<1 ? Math.round(km2*100)/100+' km²' : (Math.round(km2*10)/10)+' km²';
 }
 
-// ── Edit a neighbourhood tile's boundary (draggable vertices) ──
-let nbhdEditId = null;        // which tile is currently in edit mode
+// ── Edit a neighbourhood tile's boundary (drag vertices, add via midpoints, right-click to delete) ──
+let nbhdEditId = null;
 let nbhdEditMarkers = [];
+let nbhdMidMarkers = [];
 
 function editNeighbourhood(id){
-  // toggle: if already editing this one, finish; else start
   if(nbhdEditId===id){ finishNbhdEdit(); return; }
-  finishNbhdEdit(); // close any other
+  finishNbhdEdit();
   const nb = neighbourhoods.find(n=>n.id===id);
   if(!nb){ return; }
   nbhdEditId = id;
   selectedNbhdId = id;
-  // pts in Leaflet [lat,lon]
-  const pts = nb.ring.map(c=>[c[1],c[0]]);
-  // redraw the tile prominently while editing
+  const pts = nb.ring.map(c=>[c[1],c[0]]); // [lat,lon], open ring
   if(nb.layer && nbhdLayerGroup){ nbhdLayerGroup.removeLayer(nb.layer); nb.layer=null; }
-  let editPoly = L.polygon(pts,{color:'#c8a96e',weight:2,fillColor:'#c8a96e',fillOpacity:0.08,dashArray:'5,3'}).addTo(map);
+  const editPoly = L.polygon(pts,{color:'#c8a96e',weight:2,fillColor:'#c8a96e',fillOpacity:0.08,dashArray:'5,3'}).addTo(map);
   nb._editPoly = editPoly;
-  pts.forEach((pt,idx)=>{
-    const m=L.circleMarker(pt,{radius:6,fillColor:'#c8a96e',color:'#fff',weight:2,fillOpacity:.95,zIndexOffset:1000}).addTo(map);
-    m.on('mousedown',e=>{
-      L.DomEvent.stopPropagation(e); map.dragging.disable();
-      const move=e2=>{
-        pts[idx]=[e2.latlng.lat,e2.latlng.lng];
-        m.setLatLng(e2.latlng);
-        editPoly.setLatLngs(pts);
-      };
-      map.on('mousemove',move);
-      map.once('mouseup',()=>{
-        map.dragging.enable(); map.off('mousemove',move);
-        // persist back into nb.ring as [lon,lat]
-        nb.ring = pts.map(p=>[p[1],p[0]]);
-        try{ nb.area = estimateAreaKm2(nb.ring.map(c=>[c[1],c[0]])); }catch(e){}
-        // editing the boundary invalidates a stored result
-        if(nb.status==='analysed'){ nb.status='pending'; nb.result=null; }
-        renderNbhdList();
-      });
-    });
-    nbhdEditMarkers.push(m);
-  });
-  showToast('Editing #'+nb.id+' — drag the dots, then click ✓ Done');
+
+  const persist=()=>{
+    nb.ring = pts.map(p=>[p[1],p[0]]);
+    try{ nb.area = estimateAreaKm2(nb.ring.map(c=>[c[1],c[0]])); }catch(e){}
+    if(nb.status==='analysed'){ nb.status='pending'; nb.result=null; }
+    renderNbhdList();
+  };
+  const rebuild=()=>{ editPoly.setLatLngs(pts); drawVertexHandles(pts, editPoly, nbhdEditMarkers, nbhdMidMarkers, persist, rebuild); };
+
+  drawVertexHandles(pts, editPoly, nbhdEditMarkers, nbhdMidMarkers, persist, rebuild);
+  showToast('Editing #'+nb.id+' — drag dots to move · drag a faint midpoint to add · right-click a dot to delete · ✓ when done');
   renderNbhdList();
   try{ map.fitBounds(editPoly.getBounds(),{padding:[50,50]}); }catch(e){}
 }
@@ -1482,12 +1477,67 @@ function finishNbhdEdit(){
   if(nbhdEditId==null) return;
   const nb = neighbourhoods.find(n=>n.id===nbhdEditId);
   nbhdEditMarkers.forEach(m=>map.removeLayer(m)); nbhdEditMarkers=[];
+  nbhdMidMarkers.forEach(m=>map.removeLayer(m)); nbhdMidMarkers=[];
   if(nb){
     if(nb._editPoly){ map.removeLayer(nb._editPoly); nb._editPoly=null; }
-    nb.layer=null; drawNeighbourhoodLayer(nb);   // redraw normal tile from updated ring
+    nb.layer=null; drawNeighbourhoodLayer(nb);
   }
   nbhdEditId=null;
   renderNbhdList();
+}
+
+// Shared vertex-handle renderer used by BOTH the tile editor and the draw-boundary editor.
+// pts: array of [lat,lon] (mutated in place). poly: the L.polygon being edited.
+// vertStore / midStore: arrays to hold the marker layers (cleared & refilled here).
+// onChange: called after any change to persist. rebuild: re-renders handles (after add/delete).
+function drawVertexHandles(pts, poly, vertStore, midStore, onChange, rebuild, col){
+  col = col || '#c8a96e';
+  vertStore.forEach(m=>map.removeLayer(m)); vertStore.length=0;
+  midStore.forEach(m=>map.removeLayer(m)); midStore.length=0;
+
+  // vertex handles (drag to move, right-click to delete)
+  pts.forEach((pt,idx)=>{
+    const m=L.circleMarker(pt,{radius:6,fillColor:col,color:'#fff',weight:2,fillOpacity:.95,zIndexOffset:1000}).addTo(map);
+    m.on('mousedown',e=>{
+      if(e.originalEvent && e.originalEvent.button===2) return; // ignore right-button here
+      L.DomEvent.stopPropagation(e); map.dragging.disable();
+      const move=e2=>{ pts[idx]=[e2.latlng.lat,e2.latlng.lng]; m.setLatLng(e2.latlng); poly.setLatLngs(pts); updateMidPositions(pts,midStore); };
+      map.on('mousemove',move);
+      map.once('mouseup',()=>{ map.dragging.enable(); map.off('mousemove',move); onChange(); });
+    });
+    m.on('contextmenu',e=>{
+      L.DomEvent.stopPropagation(e); L.DomEvent.preventDefault(e);
+      if(pts.length<=3){ showToast('A boundary needs at least 3 points'); return; }
+      pts.splice(idx,1); onChange(); rebuild();
+    });
+    vertStore.push(m);
+  });
+
+  // midpoint handles (drag to insert a new vertex on that edge)
+  for(let i=0;i<pts.length;i++){
+    const a=pts[i], b=pts[(i+1)%pts.length];
+    const mid=[(a[0]+b[0])/2,(a[1]+b[1])/2];
+    const mm=L.circleMarker(mid,{radius:4,fillColor:col,color:'#fff',weight:1,fillOpacity:.45,zIndexOffset:900}).addTo(map);
+    mm._edge=i;
+    mm.on('mousedown',e=>{
+      L.DomEvent.stopPropagation(e); map.dragging.disable();
+      // insert a new vertex at this edge, then drag it
+      const insertAt=mm._edge+1;
+      pts.splice(insertAt,0,[mid[0],mid[1]]);
+      const move=e2=>{ pts[insertAt]=[e2.latlng.lat,e2.latlng.lng]; poly.setLatLngs(pts); };
+      map.on('mousemove',move);
+      map.once('mouseup',()=>{ map.dragging.enable(); map.off('mousemove',move); onChange(); rebuild(); });
+    });
+    midStore.push(mm);
+  }
+}
+
+function updateMidPositions(pts, midStore){
+  // keep midpoint dots centered as vertices move
+  for(let i=0;i<midStore.length;i++){
+    const a=pts[i], b=pts[(i+1)%pts.length];
+    if(a&&b) midStore[i].setLatLng([(a[0]+b[0])/2,(a[1]+b[1])/2]);
+  }
 }
 
 function renderNbhdList(){
@@ -1592,6 +1642,7 @@ function applyBoundary(type, coordsLonLat){
   // Remove old
   if(boundLayers[type]){ map.removeLayer(boundLayers[type]); boundLayers[type]=null; }
   editMarkers[type].forEach(m=>map.removeLayer(m)); editMarkers[type]=[];
+  if(editMidMarkers[type]){ editMidMarkers[type].forEach(m=>map.removeLayer(m)); editMidMarkers[type]=[]; }
   // Store
   bounds[type] = coordsLonLat;
   // Leaflet needs [lat,lon]
@@ -1613,6 +1664,7 @@ function resetBoundary(type){
   if(!confirm('Reset '+(type==='study'?'study area':'global context')+'?')) return;
   if(boundLayers[type]){ map.removeLayer(boundLayers[type]); boundLayers[type]=null; }
   editMarkers[type].forEach(m=>map.removeLayer(m)); editMarkers[type]=[];
+  if(editMidMarkers[type]){ editMidMarkers[type].forEach(m=>map.removeLayer(m)); editMidMarkers[type]=[]; }
   bounds[type]=null;
   document.getElementById(type==='study'?'study-actions':'ctx-actions').style.display='none';
   if(!bounds.study && !bounds.ctx) document.getElementById('bl').style.display='none';
@@ -1651,6 +1703,7 @@ function clearBounds(){
   ['study','ctx'].forEach(t=>{
     if(boundLayers[t]){ map.removeLayer(boundLayers[t]); boundLayers[t]=null; }
     editMarkers[t].forEach(m=>map.removeLayer(m)); editMarkers[t]=[];
+    if(editMidMarkers[t]){ editMidMarkers[t].forEach(m=>map.removeLayer(m)); editMidMarkers[t]=[]; }
     bounds[t]=null;
     document.getElementById(t==='study'?'study-actions':'ctx-actions').style.display='none';
   });
@@ -3123,18 +3176,24 @@ function computeProximity(segs,graph,attConfigs){
 /* ════════════════════════════════════════════════
    GRADING — 4 tiers
 ════════════════════════════════════════════════ */
-function grade(segs,ssW,proxW,p1t,p2t,p3t,wN){
-  // WEIGHTED-MAX composite (not a weighted average). Averaging three uncorrelated measures
-  // (a road strong on one is often weak on another) regresses everything to the mean and
-  // flattens the map. Instead, each road takes its STRONGEST Space Syntax quality: a street
-  // is a walking priority if it's important for ANY structural reason (great through-route OR
-  // central hub OR local connector). The sub-weights scale each measure relative to the
-  // largest weight, so the most-important measure (integration) can reach 1.0 while the
-  // downweighted one (connectivity) is capped proportionally — the weighting still matters.
+function grade(segs,ssW,proxW,p1t,p2t,p3t,wN,maxing){
+  // Composite of the three Space Syntax measures → s._ss.
+  // DEFAULT (maxing=true): weighted-MAX — each road takes its STRONGEST quality, so a
+  //   street is a walking priority if it's important for ANY structural reason. Averaging
+  //   three uncorrelated measures regresses to the mean and flattens the map. Under max the
+  //   three are equal lenses (wN scales them but with equal weights this is a plain max).
+  // ALTERNATIVE (maxing=false): weighted-AVERAGE — blend the three by wN (normalised), so
+  //   the analyst can down-weight a noisy measure (e.g. Connectivity).
+  if(maxing===undefined) maxing=true;
   const wMax = Math.max(wN[0], wN[1], wN[2], 1e-6);
   const sc = [wN[0]/wMax, wN[1]/wMax, wN[2]/wMax];
+  const wSum = Math.max(wN[0]+wN[1]+wN[2], 1e-6);
   segs.forEach(s=>{
-    s._ss = Math.max(sc[0]*s._coN, sc[1]*s._li8, sc[2]*s._ch);
+    if(maxing){
+      s._ss = Math.max(sc[0]*s._coN, sc[1]*s._li8, sc[2]*s._ch);
+    } else {
+      s._ss = (wN[0]*s._coN + wN[1]*s._li8 + wN[2]*s._ch) / wSum;
+    }
     // Proximity enters the composite as a binary value: in the proximity network (1) or not (0).
     const pxG = (s._pxGrade>=1 ? 1 : 0);
     s._final=s._ss*ssW+pxG*proxW;
@@ -3222,11 +3281,11 @@ function reGrade(){
   const p2t=parseInt(document.getElementById('p2t').value)/100;
   const p3t=parseInt(document.getElementById('p3t').value)/100;
   // Sub-weights removed: composite is a plain max of the three equal structural measures.
-  const wN=[1,1,1];
+  const _comp=readComposite(); const wN=_comp.wN;
   // Recompute proximity with current attVis
   const attConfigs=atts.map((a,i)=>({...a,vis:attVis[i]!==false}));
   computeProximity(segments,lastGraph,attConfigs);
-  grade(segments,ssW,proxW,p1t,p2t,p3t,wN);
+  grade(segments,ssW,proxW,p1t,p2t,p3t,wN,_comp.maxing);
   renderSegs(segments);
   if(connectorsOn)buildConnectors(segments,lastGraph);
   updateStats(segments);
@@ -3806,6 +3865,58 @@ function startAnalysisClock(){
 }
 
 /* ── Weights sync ── */
+// Keep PWN 1/2/3 band sizes coherent so all four tiers total 100%.
+// PWN 4 = 100 − (PWN1+PWN2+PWN3). If a move would push the sum past 100,
+// pull the just-moved slider back so PWN 4 can't go negative.
+function syncPwnThresholds(moved){
+  const e1=document.getElementById('p1t'), e2=document.getElementById('p2t'), e3=document.getElementById('p3t');
+  if(!e1||!e2||!e3) return;
+  let v1=parseInt(e1.value), v2=parseInt(e2.value), v3=parseInt(e3.value);
+  let sum=v1+v2+v3;
+  if(sum>100){
+    // reduce the slider that was just moved by the overflow
+    const over=sum-100;
+    if(moved==='p1t'){ v1=Math.max(parseInt(e1.min), v1-over); e1.value=v1; }
+    else if(moved==='p2t'){ v2=Math.max(parseInt(e2.min), v2-over); e2.value=v2; }
+    else { v3=Math.max(parseInt(e3.min), v3-over); e3.value=v3; }
+    sum=v1+v2+v3;
+  }
+  const p4=Math.max(0, 100-sum);
+  const set=(id,val)=>{ const el=document.getElementById(id); if(el) el.textContent=val+'%'; };
+  set('p1v',v1); set('p2v',v2); set('p3v',v3); set('p4v',p4);
+  const note=document.getElementById('pwn-sum-note');
+  if(note){
+    note.textContent = 'PWN 1–4 total 100%  ('+v1+' + '+v2+' + '+v3+' + '+p4+')';
+    note.style.color = '#484848';
+  }
+}
+
+// Toggle between weighted-max (default) and weighted-average + per-measure sliders.
+// Default (checkbox checked) = max = current behaviour; nothing changes unless unchecked.
+function syncComposite(){
+  const maxing = document.getElementById('ss-maxing') ? document.getElementById('ss-maxing').checked : true;
+  const sw=document.getElementById('ss-subweights');
+  const md=document.getElementById('ss-max-desc'), ad=document.getElementById('ss-avg-desc');
+  if(sw) sw.style.display = maxing ? 'none':'block';
+  if(md) md.style.display = maxing ? 'block':'none';
+  if(ad) ad.style.display = maxing ? 'none':'block';
+  // update slider value labels
+  [['w-conn','w-conn-v'],['w-li8','w-li8-v'],['w-ch','w-ch-v']].forEach(([s,l])=>{
+    const el=document.getElementById(s), lb=document.getElementById(l);
+    if(el&&lb) lb.textContent=el.value+'%';
+  });
+}
+// Read the active composite settings (used by both analysis entry points)
+function readComposite(){
+  const maxing = document.getElementById('ss-maxing') ? document.getElementById('ss-maxing').checked : true;
+  let wN=[1,1,1];
+  if(!maxing){
+    const g=id=>{ const el=document.getElementById(id); return el?parseInt(el.value)/100:1; };
+    wN=[g('w-conn'), g('w-li8'), g('w-ch')];
+  }
+  return {maxing, wN};
+}
+
 function syncRadius(){
   const el=document.getElementById('ss-radius'); if(!el) return;
   const v=parseInt(el.value);
@@ -3928,7 +4039,7 @@ async function runAnalysis(){
   const p2t=parseInt(document.getElementById('p2t').value)/100;
   const p3t=parseInt(document.getElementById('p3t').value)/100;
   // Sub-weights removed: composite is a plain max of the three equal structural measures.
-  const wN=[1,1,1];
+  const _comp=readComposite(); const wN=_comp.wN;
   const ssRadius = parseInt((document.getElementById('ss-radius')||{}).value || '1250');
 
   // Area check before starting
@@ -4127,7 +4238,7 @@ async function runAnalysis(){
   // Grade — rank only the study-core segments (buffer excluded from percentiles)
   setP(92,'Grading PWN — 4 tiers...','grade');await sleep(20);
   dbg('Grading...','STAGE');
-  grade(coreSegs,ssW,proxW,p1t,p2t,p3t,wN);
+  grade(coreSegs,ssW,proxW,p1t,p2t,p3t,wN,_comp.maxing);
   dbg('Graded. ANALYSIS COMPLETE.','OK');
   // Buffer segments get no grade (won't be displayed as PWN)
   allSegs.forEach(s=>{ if(!s._inStudy) s._pwn=null; });
@@ -4374,6 +4485,8 @@ document.addEventListener('click', function(e){
 renderCities();renderAtts();renderAttLayers();renderSavedBoundsList();
 updateSteps();
 if(typeof syncRadius==='function') syncRadius();
+if(typeof syncPwnThresholds==='function') syncPwnThresholds('p1t');
+if(typeof syncComposite==='function') syncComposite();
 if(typeof renderNbhdList==='function'){ renderNbhdList(); updateNbhdCount(); }
 </script>
 </body>
