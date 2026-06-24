@@ -325,7 +325,7 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
     <div class="sb-eyebrow">Urban Mobility Analysis</div>
     <div class="sb-title">PWN Analyser</div>
     <div class="sb-sub">Priority Walking Network · Space Syntax + Trip Attractors</div>
-    <div class="sb-version" id="sb-version">v3.7 · debug icon · manual run flow · 2026-06-24</div>
+    <div class="sb-version" id="sb-version">v3.8 · mesh unlocks steps 3-4 · 2026-06-24</div>
   </div>
   <div class="sb-tabs">
     <button class="tab active" onclick="switchTab('data')">Data</button>
@@ -1330,6 +1330,7 @@ function removeNeighbourhood(id){
   neighbourhoods.splice(i,1);
   if(selectedNbhdId===id) selectedNbhdId=null;
   renderNbhdList(); updateNbhdCount();
+  updateSteps();
 }
 
 function renameNeighbourhood(id){
@@ -1428,6 +1429,7 @@ function uploadMesh(input){
     let added=0;
     polys.forEach(p=>{ if(addNeighbourhood(p.ring, p.name)) added++; });
     renderNbhdList(); updateNbhdCount(); openNbhdPanel(true);
+    updateSteps();
     try{ const grp=L.featureGroup(neighbourhoods.map(n=>n.layer).filter(Boolean)); map.fitBounds(grp.getBounds(),{padding:[30,30]}); }catch(e){}
     showToast('Loaded '+added+' neighbourhood'+(added>1?'s':'')+' — set global boundary then Run in Step 4');
   });
@@ -2368,7 +2370,7 @@ function updateSteps(){
   updateDataSummary();
   // Determine completion state of each step from the actual data/boundary state
   const hasNetwork = !!(activeCity!=null && cities[activeCity] && cities[activeCity].network && cities[activeCity].network.features && cities[activeCity].network.features.length>0);
-  const hasStudy   = !!(bounds && bounds.study && bounds.study.length>=3);
+  const hasStudy   = !!(bounds && bounds.study && bounds.study.length>=3) || (typeof neighbourhoods!=='undefined' && neighbourhoods.length>0);
   const hasCtx     = !!(bounds && bounds.ctx && bounds.ctx.length>=3);
 
   const s1=document.getElementById('step-1'), s2=document.getElementById('step-2'),
