@@ -325,7 +325,7 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
     <div class="sb-eyebrow">Urban Mobility Analysis</div>
     <div class="sb-title">PWN Analyser</div>
     <div class="sb-sub">Priority Walking Network · Space Syntax + Trip Attractors</div>
-    <div class="sb-version" id="sb-version">v3.12 · batch infinite loop fix · 2026-06-24</div>
+    <div class="sb-version" id="sb-version">v3.14 · polygon highlight on click · 2026-06-26</div>
   </div>
   <div class="sb-tabs">
     <button class="tab active" onclick="switchTab('data')">Data</button>
@@ -1294,11 +1294,17 @@ function drawNeighbourhoodLayer(nb){
   if(nbhdFilter && !nbhdFilter.has(nb.id)) return;
   const ll = nb.ring.map(c=>[c[1],c[0]]);
   const col = nbhdColor(nb);
-  const poly = L.polygon(ll,{color:col, weight:1.5, fillColor:col, fillOpacity:0.05});
+  const sel = nb.id===selectedNbhdId;
+  const poly = L.polygon(ll,{
+    color: sel ? '#ffffff' : col,
+    weight: sel ? 3 : 1.5,
+    fillColor: col,
+    fillOpacity: sel ? 0.12 : 0.05
+  });
   poly.bindTooltip('#'+nb.id+(nb.name?(' · '+nb.name):''), {sticky:true});
   poly.on('click', ()=>selectNeighbourhood(nb.id));
   nb.layer = poly; nbhdLayerGroup.addLayer(poly);
-  // Keep neighbourhood outlines on top of any analysis layers
+  if(sel) poly.bringToFront();
   if(nbhdLayerGroup.bringToFront) nbhdLayerGroup.bringToFront();
 }
 
@@ -1307,18 +1313,31 @@ function redrawAllNeighbourhoods(){
   neighbourhoods.forEach(nb=>{ nb.layer=null; drawNeighbourhoodLayer(nb); });
 }
 
+function highlightSelectedNbhd(){
+  neighbourhoods.forEach(nb=>{
+    if(!nb.layer) return;
+    const col = nbhdColor(nb);
+    const sel = nb.id===selectedNbhdId;
+    nb.layer.setStyle({
+      color: sel ? '#ffffff' : col,
+      weight: sel ? 3 : 1.5,
+      fillOpacity: sel ? 0.12 : 0.05
+    });
+    if(sel) nb.layer.bringToFront();
+  });
+}
+
 let selectedNbhdId = null;
 function selectNeighbourhood(id){
-  selectedNbhdId = id;
-  const nb = neighbourhoods.find(n=>n.id===id);
-  if(!nb) return;
-  // Make this tile the active study boundary, so the normal Run button analyses it.
-  // Reuses the existing single-boundary pipeline unchanged (applyBoundary → Run).
-  try{ applyBoundary('study', JSON.parse(JSON.stringify(nb.ring))); }catch(e){}
-  if(nb.layer){
-    try{ map.fitBounds(nb.layer.getBounds(),{padding:[40,40]}); }catch(e){}
+  // Deselect if clicking the same one again
+  selectedNbhdId = (selectedNbhdId===id) ? null : id;
+  highlightSelectedNbhd();
+  if(selectedNbhdId!==null){
+    const nb = neighbourhoods.find(n=>n.id===selectedNbhdId);
+    if(nb && nb.layer){
+      try{ map.fitBounds(nb.layer.getBounds(),{padding:[60,60]}); }catch(e){}
+    }
   }
-  showToast('#'+nb.id+(nb.name?(' · '+nb.name):'')+' is now the active study area — hit Run PWN Analysis');
   renderNbhdList();
 }
 
@@ -1871,6 +1890,7 @@ function autoGenerateContext(){
       }catch(e){ console.warn('ctx buffer failed for #'+nb.id,e); }
     });
     // Also store a combined buffer as bounds.ctx (for runAnalysis fallback)
+    // and as _bufferPolygon for POI spatial filtering
     try{
       const allPolys = neighbourhoods.map(nb=>{
         const ring = [...nb.ring, nb.ring[0]];
@@ -1882,13 +1902,14 @@ function autoGenerateContext(){
       const coords = simp.geometry.type==='Polygon'
         ? simp.geometry.coordinates[0] : simp.geometry.coordinates[0][0];
       bounds.ctx = coords.map(c=>[c[0],c[1]]);
+      window._bufferPolygon = simp; // use for POI spatial filtering
     }catch(e){ bounds.ctx = null; }
 
     document.getElementById('ctx-actions').style.display='none';
     document.getElementById('bl').style.display='block';
     updateBoundaryAreas(); updateSteps();
-    showToast('Context buffer set for '+ok+' tiles ('+bufKm.toFixed(2)+'km each)');
     if(atts.some(a=>a.data)){ buildPOIMarkers(true); renderPOIToggleList(); }
+    showToast('Context buffer set for '+ok+' tiles ('+bufKm.toFixed(2)+'km each)');
     return;
   }
 
