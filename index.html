@@ -325,7 +325,7 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
     <div class="sb-eyebrow">Urban Mobility Analysis</div>
     <div class="sb-title">PWN Analyser</div>
     <div class="sb-sub">Priority Walking Network · Space Syntax + Trip Attractors</div>
-    <div class="sb-version" id="sb-version">v3.8 · mesh unlocks steps 3-4 · 2026-06-24</div>
+    <div class="sb-version" id="sb-version">v3.12 · batch infinite loop fix · 2026-06-24</div>
   </div>
   <div class="sb-tabs">
     <button class="tab active" onclick="switchTab('data')">Data</button>
@@ -1509,10 +1509,14 @@ async function analyseAllNeighbourhoods(){
     // make this tile the active study area (same as a manual click) and run
     selectedNbhdId = nb.id;
     try{ applyBoundary('study', JSON.parse(JSON.stringify(nb.ring))); }catch(e){}
+    // Set this tile's own context buffer if available (generated in Step 3)
+    if(nb.ctxRing && nb.ctxRing.length>=3){
+      bounds.ctx = JSON.parse(JSON.stringify(nb.ctxRing));
+    }
     // give the context auto-gen a moment (applyBoundary schedules it ~200ms)
     await sleep(260);
     try{
-      await runAnalysis();   // stores nb.result on completion (see runAnalysis tail)
+      await runAnalysis(true);   // true = called from batch, skip mesh dispatch
     }catch(e){ console.error('analysis failed for #'+nb.id, e); }
     done++;
     setBatchProgress(done, todo.length, nb, true);
@@ -1823,6 +1827,11 @@ function resetBoundary(type){
   editMarkers[type].forEach(m=>map.removeLayer(m)); editMarkers[type]=[];
   if(editMidMarkers[type]){ editMidMarkers[type].forEach(m=>map.removeLayer(m)); editMidMarkers[type]=[]; }
   bounds[type]=null;
+  // Also clear per-tile mesh ctx layers if resetting ctx
+  if(type==='ctx'){
+    if(window._ctxMeshLayers){ window._ctxMeshLayers.forEach(l=>map.removeLayer(l)); window._ctxMeshLayers=[]; }
+    if(typeof neighbourhoods!=='undefined') neighbourhoods.forEach(nb=>{ nb.ctxRing=null; });
+  }
   document.getElementById(type==='study'?'study-actions':'ctx-actions').style.display='none';
   if(!bounds.study && !bounds.ctx) document.getElementById('bl').style.display='none';
   if(type==='study') clearAreaWarning();
@@ -1832,12 +1841,62 @@ function resetBoundary(type){
 }
 
 function autoGenerateContext(){
-  if(!bounds.study) return;
+  const maxAttR = Math.max(0, ...atts.filter(a=>a.data).map(a=>a.radius||0));
+  const bufKm = Math.max(1.25, maxAttR/1000);
+
+  // ── MESH / MULTI-NEIGHBOURHOOD MODE: buffer each polygon individually ──
+  if(typeof neighbourhoods!=='undefined' && neighbourhoods.length>0){
+    // Clear any existing ctx layer
+    if(boundLayers.ctx){ map.removeLayer(boundLayers.ctx); boundLayers.ctx=null; }
+    if(window._ctxMeshLayers){ window._ctxMeshLayers.forEach(l=>map.removeLayer(l)); }
+    window._ctxMeshLayers = [];
+
+    // Store per-tile context rings on the neighbourhood objects
+    let ok=0;
+    neighbourhoods.forEach(nb=>{
+      try{
+        const ring = [...nb.ring, nb.ring[0]];
+        const poly = turf.polygon([ring]);
+        const buffered = turf.buffer(poly, bufKm, {units:'kilometers'});
+        if(!buffered||!buffered.geometry) return;
+        const simplified = turf.simplify(buffered,{tolerance:0.0008,highQuality:true});
+        const coords = simplified.geometry.type==='Polygon'
+          ? simplified.geometry.coordinates[0]
+          : simplified.geometry.coordinates[0][0];
+        nb.ctxRing = coords.map(c=>[c[0],c[1]]); // store [lon,lat] per tile
+        const pts = nb.ctxRing.map(c=>[c[1],c[0]]);
+        const l = L.polygon(pts,{color:'#1565C0',weight:1,fillColor:'#1565C0',fillOpacity:0.03,dashArray:'4,2'}).addTo(map);
+        window._ctxMeshLayers.push(l);
+        ok++;
+      }catch(e){ console.warn('ctx buffer failed for #'+nb.id,e); }
+    });
+    // Also store a combined buffer as bounds.ctx (for runAnalysis fallback)
+    try{
+      const allPolys = neighbourhoods.map(nb=>{
+        const ring = [...nb.ring, nb.ring[0]];
+        return turf.polygon([ring]);
+      });
+      const union = allPolys.length===1 ? allPolys[0] : allPolys.reduce((acc,p)=>{ try{ return turf.union(acc,p); }catch(e){ return acc; } });
+      const bigBuf = turf.buffer(union, bufKm, {units:'kilometers'});
+      const simp = turf.simplify(bigBuf,{tolerance:0.001,highQuality:false});
+      const coords = simp.geometry.type==='Polygon'
+        ? simp.geometry.coordinates[0] : simp.geometry.coordinates[0][0];
+      bounds.ctx = coords.map(c=>[c[0],c[1]]);
+    }catch(e){ bounds.ctx = null; }
+
+    document.getElementById('ctx-actions').style.display='none';
+    document.getElementById('bl').style.display='block';
+    updateBoundaryAreas(); updateSteps();
+    showToast('Context buffer set for '+ok+' tiles ('+bufKm.toFixed(2)+'km each)');
+    if(atts.some(a=>a.data)){ buildPOIMarkers(true); renderPOIToggleList(); }
+    return;
+  }
+
+  // ── SINGLE POLYGON / DRAWN BOUNDARY ──
+  if(!bounds.study || bounds.study.length<3){ showToast('Draw or upload a boundary first'); return; }
   try{
     const ring = [...bounds.study, bounds.study[0]];
     const studyPoly = turf.polygon([ring]);
-    const maxAttR = Math.max(0, ...atts.filter(a=>a.data).map(a=>a.radius||0));
-    const bufKm = Math.max(1.25, maxAttR/1000);
     const buffered = turf.buffer(studyPoly, bufKm, {units:'kilometers'});
     if(!buffered||!buffered.geometry) return;
     window._bufferPolygon = buffered;
@@ -1847,18 +1906,8 @@ function autoGenerateContext(){
       ? simplified.geometry.coordinates[0]
       : simplified.geometry.coordinates[0][0];
     const coordsLonLat = simCoords.map(c=>[c[0],c[1]]);
-    // For mesh mode: apply boundary without edit nodes (too many tiles to edit)
-    if(isMeshMode){
-      if(boundLayers.ctx){ map.removeLayer(boundLayers.ctx); boundLayers.ctx=null; }
-      bounds.ctx = coordsLonLat;
-      const pts = coordsLonLat.map(c=>[c[1],c[0]]);
-      boundLayers.ctx = L.polygon(pts,{color:'#1565C0',weight:1.5,fillColor:'#1565C0',fillOpacity:0.04,dashArray:'4,2'}).addTo(map);
-      document.getElementById('bl').style.display='block';
-      updateBoundaryAreas();
-    } else {
-      applyBoundary('ctx', coordsLonLat);
-    }
-    showToast('Buffer set to '+bufKm.toFixed(2)+'km'+(isMeshMode?' (not editable in mesh mode)':''));
+    applyBoundary('ctx', coordsLonLat); // editable for single polygon
+    showToast('Context buffer set to '+bufKm.toFixed(2)+'km — drag vertices to adjust');
   } catch(e){ console.error('Auto-context failed:',e); showToast('Auto-context failed'); }
 }
 
@@ -1870,6 +1919,9 @@ function clearBounds(){
     bounds[t]=null;
     document.getElementById(t==='study'?'study-actions':'ctx-actions').style.display='none';
   });
+  // Clear per-tile mesh context layers
+  if(window._ctxMeshLayers){ window._ctxMeshLayers.forEach(l=>map.removeLayer(l)); window._ctxMeshLayers=[]; }
+  if(typeof neighbourhoods!=='undefined') neighbourhoods.forEach(nb=>{ nb.ctxRing=null; });
   cancelDraw();
   document.getElementById('bl').style.display='none';
 }
@@ -4847,13 +4899,13 @@ function toggleCorridors(){
 /* ════════════════════════════════════════════════
    MAIN ANALYSIS
 ════════════════════════════════════════════════ */
-async function runAnalysis(){
+async function runAnalysis(_fromBatch){
   if(activeCity===null){showToast('Select a city first');return;}
   const city=cities[activeCity];
   if(!city.network){showToast('Upload a street network first');return;}
 
-  // If a mesh is loaded (multiple neighbourhoods), dispatch to batch analyser
-  if(typeof neighbourhoods!=='undefined' && neighbourhoods.length>0){
+  // If a mesh is loaded and this isn't a per-tile call from the batch, dispatch to batch
+  if(!_fromBatch && typeof neighbourhoods!=='undefined' && neighbourhoods.length>0){
     await analyseAllNeighbourhoods();
     return;
   }
