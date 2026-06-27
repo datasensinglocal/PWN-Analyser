@@ -317,6 +317,13 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
 .sb-version{font-size:9px;color:#555;font-family:monospace;letter-spacing:.04em;margin-top:3px}
 .leg-stat{margin-left:auto;padding-left:10px;font-family:monospace;font-size:9px;color:#999;white-space:nowrap}
 .leg-row{display:flex;align-items:center}
+.s1-vis-row{display:flex;align-items:center;gap:7px;padding:4px 6px;border-radius:4px;cursor:pointer;user-select:none;border:1px solid #1e1e1e;background:#111;font-size:10px;color:#aaa}
+.s1-vis-row:hover{border-color:#3a3a3a;color:#e2ddd6}
+.s1-vis-check{width:11px;height:11px;border-radius:2px;border:1px solid #3a3a3a;flex-shrink:0;background:#1a1a1a}
+.s1-vis-check.on{background:#c8a96e;border-color:#c8a96e}
+.s1-vis-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0}
+.s1-vis-lbl{flex:1}
+.s1-vis-count{font-size:9px;color:#555;font-family:monospace}
 </style>
 </head>
 <body>
@@ -325,7 +332,7 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
     <div class="sb-eyebrow">Urban Mobility Analysis</div>
     <div class="sb-title">PWN Analyser</div>
     <div class="sb-sub">Priority Walking Network · Space Syntax + Trip Attractors</div>
-    <div class="sb-version" id="sb-version">v3.14 · polygon highlight on click · 2026-06-26</div>
+    <div class="sb-version" id="sb-version">v3.24 · visual-only att toggles · 2026-06-27</div>
   </div>
   <div class="sb-tabs">
     <button class="tab active" onclick="switchTab('data')">Data</button>
@@ -378,6 +385,11 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
                   </div>
                 </div>
               </div>
+            </div>
+            <!-- Visibility toggles — appear after data is loaded -->
+            <div id="step1-vis" style="display:none;margin-top:10px;border-top:1px solid #1e1e1e;padding-top:8px">
+              <div style="font-size:9px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#555;margin-bottom:6px">Visibility</div>
+              <div id="step1-vis-list" style="display:flex;flex-direction:column;gap:3px"></div>
             </div>
           </div>
         </div>
@@ -445,11 +457,11 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
           <div class="step-num"><span>3</span></div>
           <div class="step-body">
             <div class="step-title-row"><span class="step-title">Set global context <span style="font-size:9px;color:#666;font-weight:400">· optional</span></span><span class="step-info-ico" id="step-info-3" onclick="toggleStepInfo(3)" title="What to do">i</span></div>
-            <div class="step-desc" id="step-desc-3">Generates a ≈1.25 km buffer around the study area so edge streets are measured against the wider network. For a single boundary the buffer is editable — drag the vertices to adjust. For a mesh, the buffer is computed automatically per tile.</div>
+            <div class="step-desc" id="step-desc-3">Generates a ≈2.5 km buffer around the study area — wide enough for the 30-min Choice pass to reach its full radius. For a single boundary the buffer is editable. For a mesh, it is computed automatically per tile.</div>
             <!-- Context controls -->
             <div class="boundary-group" id="ctx-group" style="margin-top:8px">
               <div style="display:flex;gap:5px;align-items:stretch">
-                <button class="map-btn ctx" id="setctx-btn" onclick="autoGenerateContext()" title="Generate the ≈1.25 km buffer" style="flex:1">Set global boundary</button>
+                <button class="map-btn ctx" id="setctx-btn" onclick="autoGenerateContext()" title="Generate the ≈2.5 km buffer" style="flex:1">Set global boundary</button>
                 <button class="map-btn bnd-reset" onclick="resetBoundary('ctx')" title="Reset global context" style="flex:0 0 auto;padding:0 9px">↺</button>
               </div>
               <div class="boundary-actions" id="ctx-actions" style="display:none;margin-top:5px">
@@ -468,30 +480,14 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
             <div class="step-action">
               <button class="btn" id="step-run-btn" style="width:100%;background:#c8a96e;color:#0d0d0d;font-weight:700;border:none;padding:10px" onclick="runAnalysis()">▶ Run PWN Analysis</button>
             </div>
-            <!-- Mode switcher — revealed after run -->
+            <!-- Analysis layers — always shown after run -->
             <div id="mode-switcher" style="display:none;margin-top:10px;border-top:1px solid #1e1e1e;padding-top:10px">
-              <div style="font-size:9px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#555;margin-bottom:7px">View results as</div>
-              <div style="display:flex;gap:6px">
-                <button class="mode-tog-btn active" id="mtb-composite" onclick="setAnalysisMode('composite')" style="flex:1">
-                  <div style="font-size:10px;font-weight:700">Method 1</div>
-                  <div style="font-size:9px;opacity:.7;margin-top:2px">Composite score</div>
-                </button>
-                <button class="mode-tog-btn" id="mtb-diagnostic" onclick="setAnalysisMode('diagnostic')" style="flex:1">
-                  <div style="font-size:10px;font-weight:700">Method 2</div>
-                  <div style="font-size:9px;opacity:.7;margin-top:2px">Safety · Access · Junctions</div>
-                </button>
-              </div>
-              <!-- Method 2 layer checkboxes — shown only when diagnostic active -->
-              <div id="m2-layer-toggles" style="display:none;margin-top:10px;border-top:1px solid #1e1e1e;padding-top:8px">
+              <!-- Method 2 layer toggles -->
+              <div id="m2-layer-toggles" style="display:block;margin-top:10px;border-top:1px solid #1e1e1e;padding-top:8px">
                 <div style="font-size:9px;color:#555;margin-bottom:6px;letter-spacing:.05em;text-transform:uppercase;font-weight:600">Visible layers</div>
-                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px">
-                  <label class="m2-tog-lbl" style="--c:#c0392b"><input type="checkbox" id="m2-s1" checked onchange="renderM2Layers()"/><span class="m2-dot" style="background:#c0392b"></span>S1</label>
-                  <label class="m2-tog-lbl" style="--c:#e67e7e"><input type="checkbox" id="m2-s2" checked onchange="renderM2Layers()"/><span class="m2-dot" style="background:#e67e7e"></span>S2</label>
-                  <label class="m2-tog-lbl" style="--c:#f5b7b1"><input type="checkbox" id="m2-s3" checked onchange="renderM2Layers()"/><span class="m2-dot" style="background:#f5b7b1"></span>S3</label>
-                  <label class="m2-tog-lbl" style="--c:#1a7a5e"><input type="checkbox" id="m2-a1" checked onchange="renderM2Layers()"/><span class="m2-dot" style="background:#1a7a5e"></span>A1</label>
-                  <label class="m2-tog-lbl" style="--c:#48c9a4"><input type="checkbox" id="m2-a2" checked onchange="renderM2Layers()"/><span class="m2-dot" style="background:#48c9a4"></span>A2</label>
-                  <label class="m2-tog-lbl" style="--c:#a8e6d4"><input type="checkbox" id="m2-a3" checked onchange="renderM2Layers()"/><span class="m2-dot" style="background:#a8e6d4"></span>A3</label>
-                  <label class="m2-tog-lbl" style="--c:#7d3c98;grid-column:1/-1"><input type="checkbox" id="m2-j" checked onchange="renderM2Layers()"/><span class="m2-dot" style="background:#7d3c98"></span>J — Junction nodes</label>
+                <div style="display:flex;gap:8px">
+                  <label class="m2-tog-lbl"><input type="checkbox" id="m2-safety" checked onchange="renderM2Layers()"/><span style="display:inline-block;width:24px;height:4px;background:#c0392b;border-radius:2px;flex-shrink:0"></span>Safety</label>
+                  <label class="m2-tog-lbl"><input type="checkbox" id="m2-access" checked onchange="renderM2Layers()"/><span style="display:inline-block;width:24px;height:4px;background:#185FA5;border-radius:2px;flex-shrink:0"></span>Access</label>
                 </div>
               </div>
             </div>
@@ -506,9 +502,8 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
             <div class="step-desc" id="step-desc-5">Find roads that bridge two high-value streets but don't score high on their own. Shown as gap closers in cyan — grades are not changed.</div>
             <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px">
               <select id="gap-method-sel" class="mode-sel" style="flex:1;height:28px">
-                <option value="composite">Method 1 — Composite</option>
-                <option value="diagnostic_s">Method 2 — Safety network</option>
-                <option value="diagnostic_a">Method 2 — Access network</option>
+                <option value="diagnostic_s">Safety network</option>
+                <option value="diagnostic_a">Access network</option>
               </select>
             </div>
             <div class="step-action">
@@ -628,17 +623,14 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
       </div>
       <!-- ── METHOD 2 THRESHOLDS ── -->
       <div class="section">
-        <div class="sec-label">Method 2 — Thresholds <span style="color:#555;font-weight:400;text-transform:none;letter-spacing:0">· top % = High</span></div>
-        <div style="font-size:9px;color:#666;line-height:1.5;margin-bottom:8px">Define what "High" and "Medium" mean for each measure. These percentile cutoffs determine which streets get flagged in the Safety, Access, and Junction layers.</div>
-        <div style="font-size:9px;color:#c0392b;font-weight:600;margin-bottom:4px;letter-spacing:.05em">SAFETY (30-min Choice)</div>
-        <div class="w-row"><div class="w-head"><span class="w-lbl">Ch30 High (S1)</span><span class="w-val" id="m2-ch30-hi-v">25%</span></div><input type="range" id="m2-ch30-hi" min="5" max="50" value="25" step="1" oninput="syncM2Thresholds()"/></div>
-        <div class="w-row"><div class="w-head"><span class="w-lbl">Ch30 Med (S2)</span><span class="w-val" id="m2-ch30-md-v">25%</span></div><input type="range" id="m2-ch30-md" min="5" max="50" value="25" step="1" oninput="syncM2Thresholds()"/></div>
-        <div style="font-size:9px;color:#1a7a5e;font-weight:600;margin:8px 0 4px;letter-spacing:.05em">ACCESS (walking Integration + Proximity)</div>
-        <div class="w-row"><div class="w-head"><span class="w-lbl">Integration High</span><span class="w-val" id="m2-li8-hi-v">30%</span></div><input type="range" id="m2-li8-hi" min="5" max="50" value="30" step="1" oninput="syncM2Thresholds()"/></div>
-        <div class="w-row"><div class="w-head"><span class="w-lbl">Integration Med</span><span class="w-val" id="m2-li8-md-v">30%</span></div><input type="range" id="m2-li8-md" min="5" max="50" value="30" step="1" oninput="syncM2Thresholds()"/></div>
-        <div style="font-size:9px;color:#7d3c98;font-weight:600;margin:8px 0 4px;letter-spacing:.05em">JUNCTIONS (Connectivity)</div>
-        <div class="w-row"><div class="w-head"><span class="w-lbl">Connectivity High (J1)</span><span class="w-val" id="m2-co-hi-v">20%</span></div><input type="range" id="m2-co-hi" min="5" max="40" value="20" step="1" oninput="syncM2Thresholds()"/></div>
-        <div class="w-row"><div class="w-head"><span class="w-lbl">Connectivity Med (J2)</span><span class="w-val" id="m2-co-md-v">30%</span></div><input type="range" id="m2-co-md" min="5" max="50" value="30" step="1" oninput="syncM2Thresholds()"/></div>
+        <div class="sec-label">Method 2 — Minimum score to render</div>
+        <div style="font-size:9px;color:#666;line-height:1.5;margin-bottom:8px">Streets below the minimum score are hidden. Line weight above that is continuous — higher score = thicker line. No forced tier breaks.</div>
+        <div style="font-size:9px;color:#c0392b;font-weight:600;margin-bottom:4px;letter-spacing:.05em">SAFETY — 30-min Choice</div>
+        <div class="w-row"><div class="w-head"><span class="w-lbl">Min score to show</span><span class="w-val" id="m2-ch30-min-v">0.10</span></div><input type="range" id="m2-ch30-min" min="0" max="60" value="10" step="1" oninput="syncM2Thresholds()"/></div>
+        <div style="font-size:9px;color:#185FA5;font-weight:600;margin:8px 0 4px;letter-spacing:.05em">ACCESS — Integration × proximity</div>
+        <div class="w-row"><div class="w-head"><span class="w-lbl">Min score to show</span><span class="w-val" id="m2-li8-min-v">0.10</span></div><input type="range" id="m2-li8-min" min="0" max="60" value="10" step="1" oninput="syncM2Thresholds()"/></div>
+        <div class="w-row"><div class="w-head"><span class="w-lbl">Proximity boost</span><span class="w-val" id="m2-prox-boost-v">1.0×</span></div><input type="range" id="m2-prox-boost" min="0" max="200" value="100" step="10" oninput="syncM2Thresholds()"/></div>
+        <div style="font-size:9px;color:#555;line-height:1.45;margin-top:5px">Proximity boost multiplies Integration score for streets near trip attractors. 1.0× = doubles their score. 0× = no boost.</div>
       </div>
     </div>
 
@@ -710,16 +702,24 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
     <div class="leg-row" id="leg-corridor" style="display:none"><div class="leg-line" style="background:#c8a96e;border-top:2px dashed #c8a96e;height:0"></div>Attractor corridor (out-of-area pull)</div>
     <!-- Method 2 legend — shown only in diagnostic mode -->
     <div id="leg-m2" style="display:none">
-      <div class="leg-title" style="margin-top:6px">Safety</div>
-      <div class="leg-row"><div class="leg-line" style="background:#c0392b"></div>S1 — High conflict<span class="leg-stat" id="lst-s1"></span></div>
-      <div class="leg-row"><div class="leg-line" style="background:#e67e7e"></div>S2 — Med conflict<span class="leg-stat" id="lst-s2"></span></div>
-      <div class="leg-row"><div class="leg-line" style="background:#f5b7b1"></div>S3 — Low conflict<span class="leg-stat" id="lst-s3"></span></div>
-      <div class="leg-title" style="margin-top:6px">Access</div>
-      <div class="leg-row"><div class="leg-line" style="background:#1a7a5e"></div>A1 — High demand<span class="leg-stat" id="lst-a1"></span></div>
-      <div class="leg-row"><div class="leg-line" style="background:#48c9a4"></div>A2 — Med demand<span class="leg-stat" id="lst-a2"></span></div>
-      <div class="leg-row"><div class="leg-line" style="background:#a8e6d4"></div>A3 — Low demand<span class="leg-stat" id="lst-a3"></span></div>
-      <div class="leg-title" style="margin-top:6px">Junctions</div>
-      <div class="leg-row"><div style="width:8px;height:8px;border-radius:50%;background:#7d3c98;flex-shrink:0;margin-right:6px"></div>J1/J2/J3 — nodes by connectivity</div>
+      <div class="leg-title" style="margin-top:6px">Safety corridors</div>
+      <div style="display:flex;align-items:center;gap:6px;padding:3px 0">
+        <div style="display:flex;gap:2px;align-items:center">
+          <div style="width:20px;height:7px;background:#c0392b;border-radius:1px"></div>
+          <div style="width:20px;height:4px;background:#c0392b;border-radius:1px"></div>
+          <div style="width:20px;height:2px;background:#c0392b;border-radius:1px"></div>
+        </div>
+        <span class="leg-label" style="font-size:10px;color:var(--text-secondary)">Ch30 score → line weight</span>
+      </div>
+      <div class="leg-title" style="margin-top:6px">Access corridors</div>
+      <div style="display:flex;align-items:center;gap:6px;padding:3px 0">
+        <div style="display:flex;gap:2px;align-items:center">
+          <div style="width:20px;height:6px;background:#185FA5;border-radius:1px"></div>
+          <div style="width:20px;height:3px;background:#185FA5;border-radius:1px"></div>
+          <div style="width:20px;height:1.5px;background:#185FA5;border-radius:1px"></div>
+        </div>
+        <span class="leg-label" style="font-size:10px;color:var(--text-secondary)">Integration × proximity → line weight</span>
+      </div>
     </div>
     <div id="leg-score" style="display:none">
       <div class="leg-title" id="leg-score-title">Score</div>
@@ -1861,7 +1861,10 @@ function resetBoundary(type){
 
 function autoGenerateContext(){
   const maxAttR = Math.max(0, ...atts.filter(a=>a.data).map(a=>a.radius||0));
-  const bufKm = Math.max(1.25, maxAttR/1000);
+  // Buffer must be at least 2.5km so the 30-min Choice pass (R=2500m) has
+  // enough network to reach its full radius. 1.25km was too small — the graph
+  // ran out of roads before the radius was satisfied, causing fragmented S1/S2.
+  const bufKm = Math.max(2.5, maxAttR/1000);
 
   // ── MESH / MULTI-NEIGHBOURHOOD MODE: buffer each polygon individually ──
   if(typeof neighbourhoods!=='undefined' && neighbourhoods.length>0){
@@ -2512,10 +2515,11 @@ function loadNetwork(input){
     document.getElementById('net-s').textContent=fname;
     if(netLayer)map.removeLayer(netLayer);
     netLayer=L.geoJSON(gj,{style:{color:'#aaaaaa',weight:0.8,opacity:0.5}}).addTo(map);
+    netLayerVisible = true;
     try{map.fitBounds(netLayer.getBounds(),{padding:[30,30]});}catch(ex){}
     updateSteps();
-    toggleDataPanel(true); // tidy: collapse loaded data once network is in
-    renderCities();showToast('Network loaded — '+ct+' features');
+    toggleDataPanel(true);
+    renderCities(); renderStep1VisToggles(); showToast('Network loaded — '+ct+' features');
   });
 }
 
@@ -2601,6 +2605,50 @@ function renderAttLayers(){
       ${a.name} <span style="color:#555;font-size:9px;margin-left:3px">(${a.count})</span>
     </div>`:''
   ).join('');
+  renderStep1VisToggles();
+}
+
+function renderStep1VisToggles(){
+  const panel = document.getElementById('step1-vis');
+  const list  = document.getElementById('step1-vis-list');
+  if(!panel || !list) return;
+
+  const hasNetwork = typeof cities!=='undefined' && activeCity!=null && cities[activeCity] && cities[activeCity].network;
+  const hasAtts = atts.some(a=>a.data);
+  if(!hasNetwork && !hasAtts){ panel.style.display='none'; return; }
+  panel.style.display = 'block';
+
+  let html = '';
+  // Road network toggle
+  if(hasNetwork){
+    const netOn = typeof netLayerVisible==='undefined' ? true : netLayerVisible;
+    html += `<label class="s1-vis-row" onclick="toggleNetworkLayer()">
+      <span class="s1-vis-check ${netOn?'on':''}"></span>
+      <span class="s1-vis-dot" style="background:#888;border-radius:2px"></span>
+      <span class="s1-vis-lbl">Road network</span>
+    </label>`;
+  }
+  // Per-attractor toggles
+  atts.forEach((a,i)=>{
+    if(!a.data) return;
+    const on = attVis[i]!==false;
+    html += `<label class="s1-vis-row" onclick="toggleAtt(${i});renderStep1VisToggles()">
+      <span class="s1-vis-check ${on?'on':''}"></span>
+      <span class="s1-vis-dot" style="background:${a.color}"></span>
+      <span class="s1-vis-lbl">${a.name}</span>
+      <span class="s1-vis-count">${a.count||''}</span>
+    </label>`;
+  });
+  list.innerHTML = html;
+}
+
+let netLayerVisible = true;
+function toggleNetworkLayer(){
+  netLayerVisible = !netLayerVisible;
+  if(typeof netLayer!=='undefined' && netLayer){
+    netLayerVisible ? map.addLayer(netLayer) : map.removeLayer(netLayer);
+  }
+  renderStep1VisToggles();
 }
 
 /* ════════════════════════════════════════════════
@@ -3720,92 +3768,13 @@ function computeProximity(segs,graph,attConfigs){
    All read from the same stored scores (_li8, _ch,
    _ch30, _coN, _pxGrade) — no re-run needed.
 ════════════════════════════════════════════════ */
-let _analysisMode = 'composite'; // default
+// Always diagnostic — Method 1 removed
+let _analysisMode = 'diagnostic';
+function getAnalysisMode(){ return 'diagnostic'; }
+function setAnalysisMode(){}
+function applyModeSwitch(){ if(segments&&segments.length) renderM2Layers(); }
+function applyAnalysisMode(segs){ gradeDiagnostic(segs); }
 
-function getAnalysisMode(){ return _analysisMode; }
-
-function setAnalysisMode(mode){
-  if(mode!=='composite' && mode!=='diagnostic') mode='composite';
-  _analysisMode = mode;
-  ['composite','diagnostic'].forEach(m=>{
-    const btn = document.getElementById('mtb-'+m);
-    if(btn) btn.classList.toggle('active', m===mode);
-  });
-  // Show/hide M2 layer checkboxes
-  const m2tog = document.getElementById('m2-layer-toggles');
-  if(m2tog) m2tog.style.display = mode==='diagnostic' ? 'block':'none';
-
-  if(!window._analysed || !segments || !segments.length) return;
-
-  const hasMesh = typeof neighbourhoods!=='undefined' && analysedTiles && analysedTiles().length>0;
-
-  if(hasMesh){
-    // For mesh: switch composite view using stored results (no re-run needed)
-    showCombinedResults();
-  } else {
-    // For single polygon: re-grade live segments from stored raw scores
-    const ssW   = parseInt(document.getElementById('ssfw').value)/100;
-    const proxW = 1-ssW;
-    const p1t = parseInt(document.getElementById('p1t').value)/100;
-    const p2t = parseInt(document.getElementById('p2t').value)/100;
-    const p3t = parseInt(document.getElementById('p3t').value)/100;
-    const _comp = readComposite();
-    clearM2Layers();
-    const legM2 = document.getElementById('leg-m2');
-    const legPwn = document.querySelectorAll('#leg-pwn1,#leg-pwn2,#leg-pwn3,#leg-pwn4');
-    if(mode==='diagnostic'){
-      gradeDiagnostic(segments);
-      legPwn.forEach(el=>el.style.display='none');
-      if(legM2) legM2.style.display='block';
-      renderM2Layers();
-    } else {
-      // Restore Method 1 grades
-      segments.forEach(s=>{ if(s._pwn1){ s._pwn=s._pwn1; s._final=s._final1; } else {
-        grade(segments, ssW, proxW, p1t, p2t, p3t, _comp.wN, _comp.maxing); return;
-      }});
-      legPwn.forEach(el=>el.style.display='flex');
-      if(legM2) legM2.style.display='none';
-      renderSegs(segments);
-    }
-    updateStats(segments);
-    updateModeLegend();
-  }
-  showToast('Viewing: '+(mode==='diagnostic'?'Method 2 — Investment Diagnostic':'Method 1 — Composite'));
-}
-
-function applyModeSwitch(){
-  if(!segments || !segments.length){ return; }
-  const ssW   = parseInt(document.getElementById('ssfw').value)/100;
-  const proxW = 1-ssW;
-  const p1t = parseInt(document.getElementById('p1t').value)/100;
-  const p2t = parseInt(document.getElementById('p2t').value)/100;
-  const p3t = parseInt(document.getElementById('p3t').value)/100;
-  const _comp = readComposite();
-  applyAnalysisMode(segments, ssW, proxW, p1t, p2t, p3t, _comp.wN, _comp.maxing);
-  renderSegs(segments);
-  updateStats(segments);
-  updateModeLegend();
-  showToast('Viewing: '+(_analysisMode==='diagnostic'?'Investment Diagnostic':'Composite Score'));
-}
-
-function applyAnalysisMode(segs, ssW, proxW, p1t, p2t, p3t, wN, maxing){
-  const mode = _analysisMode;
-  clearM2Layers();
-  const legM2 = document.getElementById('leg-m2');
-  const legPwn = document.querySelectorAll('#leg-pwn1,#leg-pwn2,#leg-pwn3,#leg-pwn4');
-  if(mode==='diagnostic'){
-    gradeDiagnostic(segs);
-    // Hide standard PWN legend rows, show M2 legend
-    legPwn.forEach(el=>el.style.display='none');
-    if(legM2) legM2.style.display='block';
-  } else {
-    grade(segs, ssW, proxW, p1t, p2t, p3t, wN, maxing);
-    // Show standard PWN legend rows, hide M2 legend
-    legPwn.forEach(el=>el.style.display='flex');
-    if(legM2) legM2.style.display='none';
-  }
-  updateModeLegend();
-}
 
 // ── MODE 1: Composite (existing logic, unchanged) — see grade() below ──
 
@@ -3823,75 +3792,56 @@ function applyAnalysisMode(segs, ssW, proxW, p1t, p2t, p3t, wN, maxing){
 
 // Colour palettes for each layer
 const M2_COLORS = {
-  s1:'#c0392b', s2:'#e67e7e', s3:'#f5b7b1',   // Safety: deep red → pale red
-  a1:'#1a7a5e', a2:'#48c9a4', a3:'#a8e6d4',   // Access: deep teal → pale teal
-  j1:'#7d3c98', j2:'#a569bd', j3:'#d7bde2'    // Junction: deep violet → pale violet
+  s1:'#c0392b', s2:'#c0392b', s3:'#c0392b',   // Safety: all red, weight varies
+  a1:'#c0392b', a2:'#c0392b', a3:'#c0392b',   // Access: all red, weight varies
+  j1:'#7d3c98', j2:'#a569bd', j3:'#d7bde2'    // Junction: violet family
 };
 
 // Read Method 2 threshold percentiles from Weights tab sliders
+// Read Method 2 thresholds — minimum score to render + proximity boost
 function readM2Thresholds(){
-  const g = id => { const el=document.getElementById(id); return el ? parseInt(el.value)/100 : 0.25; };
+  const g = (id, def) => { const el=document.getElementById(id); return el ? parseInt(el.value) : def; };
   return {
-    ch30Hi: g('m2-ch30-hi'),  // top X% = S1 (High Ch30)
-    ch30Md: g('m2-ch30-md'),  // next Y% = S2 (Med Ch30)
-    li8Hi:  g('m2-li8-hi'),   // top X% = High Integration
-    li8Md:  g('m2-li8-md'),   // next Y% = Med Integration
-    coHi:   g('m2-co-hi'),    // top X% = J1
-    coMd:   g('m2-co-md')     // next Y% = J2
+    chMin:  g('m2-ch30-min', 10) / 100,   // min Ch30 score to render safety line
+    liMin:  g('m2-li8-min',  10) / 100,   // min Integration score to render access line
+    proxBoost: g('m2-prox-boost', 100) / 100  // proximity multiplier (0–2.0)
   };
 }
 
 function syncM2Thresholds(){
-  const ids = ['m2-ch30-hi','m2-ch30-md','m2-li8-hi','m2-li8-md','m2-co-hi','m2-co-md'];
-  ids.forEach(id=>{
-    const el=document.getElementById(id), vl=document.getElementById(id+'-v');
-    if(el&&vl) vl.textContent=el.value+'%';
-  });
+  const chMin = document.getElementById('m2-ch30-min');
+  const liMin = document.getElementById('m2-li8-min');
+  const pb    = document.getElementById('m2-prox-boost');
+  const chV   = document.getElementById('m2-ch30-min-v');
+  const liV   = document.getElementById('m2-li8-min-v');
+  const pbV   = document.getElementById('m2-prox-boost-v');
+  if(chMin && chV) chV.textContent = (parseInt(chMin.value)/100).toFixed(2);
+  if(liMin && liV) liV.textContent = (parseInt(liMin.value)/100).toFixed(2);
+  if(pb    && pbV) pbV.textContent = (parseInt(pb.value)/100).toFixed(1)+'×';
+  // Live update if analysis already run
+  if(window._analysed && _analysisMode==='diagnostic') renderM2Layers();
 }
 
 // Score each segment for Method 2 — stores _m2s (1/2/3/0), _m2a (1/2/3/0), _m2j (1/2/3/0)
+// Uses absolute normalised score thresholds (0–1), not percentile rank.
 function scoreM2(segs){
   const t = readM2Thresholds();
-  const core = segs.filter(s=>s._inStudy!==false);
-
-  // Sort each measure descending over core segments only
-  const sorted = field => [...core].map(s=>s[field]||0).sort((a,b)=>b-a);
-  const ch30S = sorted('_ch30');
-  const li8S  = sorted('_li8');
-  const coS   = sorted('_coN');
-  const n = core.length || 1;
-
-  // Percentile thresholds: value at the Xth percentile from top
-  const thresh = (arr, pct) => arr[Math.min(arr.length-1, Math.floor(arr.length*pct))] || 0;
-
-  const ch30HiV = thresh(ch30S, t.ch30Hi);
-  const ch30MdV = thresh(ch30S, t.ch30Hi + t.ch30Md);
-  const li8HiV  = thresh(li8S,  t.li8Hi);
-  const li8MdV  = thresh(li8S,  t.li8Hi + t.li8Md);
-  const coHiV   = thresh(coS,   t.coHi);
-  const coMdV   = thresh(coS,   t.coHi + t.coMd);
-
+  const ch30Vals = segs.map(s=>s._ch30||0).filter(v=>v>0);
+  const li8Vals  = segs.map(s=>s._li8||0).filter(v=>v>0);
+  const pct = (arr,p) => { const s=[...arr].sort((a,b)=>a-b); return s[Math.floor(s.length*p)]||0; };
+  if(ch30Vals.length){
+    dbg('M2 Ch30 — p50:'+pct(ch30Vals,.5).toFixed(3)+' p75:'+pct(ch30Vals,.75).toFixed(3)+' p90:'+pct(ch30Vals,.9).toFixed(3)+' max:'+Math.max(...ch30Vals).toFixed(3),'STAGE');
+    dbg('M2 Li8  — p50:'+pct(li8Vals,.5).toFixed(3)+' p75:'+pct(li8Vals,.75).toFixed(3)+' p90:'+pct(li8Vals,.9).toFixed(3)+' max:'+Math.max(...li8Vals).toFixed(3),'STAGE');
+    dbg('M2 min — safety:'+t.chMin+' access:'+t.liMin+' proxBoost:'+t.proxBoost+'x','STAGE');
+  }
   segs.forEach(s=>{
-    const ch30 = s._ch30||0, li8 = s._li8||0, co = s._coN||0;
-    const px = (s._pxGrade||0)>=1;
-
-    // Safety score: driven by Ch30, secondarily by In
-    if(ch30 >= ch30HiV)              s._m2s=1;  // S1: High Ch30
-    else if(ch30 >= ch30MdV && li8 >= li8HiV) s._m2s=2; // S2: Med Ch30 + High In
-    else if(ch30 >= ch30MdV)         s._m2s=3;  // S3: Med Ch30 only
-    else                             s._m2s=0;  // not on safety network
-
-    // Access score: In + Proximity together
-    if(li8 >= li8HiV && px)          s._m2a=1;  // A1: High In + near attractor
-    else if(li8 >= li8HiV && !px)    s._m2a=2;  // A2: High In, no attractor
-    else if(li8 >= li8MdV && px)     s._m2a=2;  // A2: Med In + near attractor
-    else if(li8 >= li8MdV || px)     s._m2a=3;  // A3: Med In OR near attractor
-    else                             s._m2a=0;  // not on access network
-
-    // Junction score: Connectivity
-    if(co >= coHiV)      s._m2j=1;
-    else if(co >= coMdV) s._m2j=2;
-    else                 s._m2j=3;  // always flagged at some level for junction nodes
+    s._m2sSc = s._ch30 || 0;
+    const li8 = s._li8 || 0;
+    const px  = Math.min(1, s._pxGrade || 0);
+    s._m2aSc  = li8 * (1 + t.proxBoost * px);
+    s._m2s = s._m2sSc >= t.chMin ? 1 : 0;
+    s._m2a = s._m2aSc >= t.liMin ? 1 : 0;
+    s._m2j = 0;
   });
 }
 
@@ -3920,68 +3870,59 @@ function buildJunctionPoints(segs, graph){
 
 function renderM2Layers(){
   if(!segments || !segments.length) return;
-  // Re-score with current thresholds
   scoreM2(segments);
+
+  // Also score out-of-area buffer segments that have attractor pull
+  const PULL_MIN = 0.05;
+  const bufferCorrSegs = (allSegments||[]).filter(s=>
+    s._inStudy===false && (s._pxRaw||0)>PULL_MIN
+  );
+  if(bufferCorrSegs.length) scoreM2(bufferCorrSegs);
+
   clearM2Layers();
 
-  const vis = {
-    s1: (document.getElementById('m2-s1')||{}).checked!==false,
-    s2: (document.getElementById('m2-s2')||{}).checked!==false,
-    s3: (document.getElementById('m2-s3')||{}).checked!==false,
-    a1: (document.getElementById('m2-a1')||{}).checked!==false,
-    a2: (document.getElementById('m2-a2')||{}).checked!==false,
-    a3: (document.getElementById('m2-a3')||{}).checked!==false,
-    j:  (document.getElementById('m2-j') ||{}).checked!==false
-  };
+  const showSafety = (document.getElementById('m2-safety')||{}).checked !== false;
+  const showAccess = (document.getElementById('m2-access')||{}).checked !== false;
+  const t = readM2Thresholds();
 
-  // Safety layer — coloured lines
-  const safetySegs = segments.filter(s=>s._m2s>0);
-  if(safetySegs.length){
+  const scoreToWeight = (score, maxW) => Math.max(0.5, score * maxW);
+
+  // Safety layer — red, continuous weight from Ch30 score (core segments only)
+  const safetySegs = segments.filter(s => (s._m2sSc||0) >= t.chMin);
+  if(safetySegs.length && showSafety){
     m2SafetyLayer = L.geoJSON(turf.featureCollection(safetySegs),{
-      style:f=>{
-        const lbl='s'+f._m2s;
-        const show = vis[lbl];
-        return { color:M2_COLORS[lbl]||'#c0392b', weight: f._m2s===1?5:f._m2s===2?3.5:2,
-                 opacity: show ? 0.92 : 0 };
-      },
+      style: f => ({
+        color: '#c0392b',
+        weight: scoreToWeight(f._m2sSc||0, 8),
+        opacity: 0.85,
+        lineCap: 'round',
+        lineJoin: 'round'
+      }),
       onEachFeature:(f,l)=>l.on('click',()=>showInfo(f))
     }).addTo(map);
   }
 
-  // Access layer — coloured lines (slightly thinner, rendered on top)
-  const accessSegs = segments.filter(s=>s._m2a>0);
-  if(accessSegs.length){
-    m2AccessLayer = L.geoJSON(turf.featureCollection(accessSegs),{
-      style:f=>{
-        const lbl='a'+f._m2a;
-        const show = vis[lbl];
-        return { color:M2_COLORS[lbl]||'#1a7a5e', weight: f._m2a===1?4:f._m2a===2?2.5:1.5,
-                 opacity: show ? 0.88 : 0 };
-      },
+  // Access layer — blue, continuous weight from Integration × proximity boost
+  // Includes both core segments AND out-of-area buffer segments with attractor pull
+  const accessMax = 1 + t.proxBoost;
+  const coreAccessSegs   = segments.filter(s => (s._m2aSc||0) >= t.liMin);
+  const bufferAccessSegs = bufferCorrSegs.filter(s => (s._m2aSc||0) >= t.liMin);
+  const allAccessSegs    = [...coreAccessSegs, ...bufferAccessSegs];
+  if(allAccessSegs.length && showAccess){
+    m2AccessLayer = L.geoJSON(turf.featureCollection(allAccessSegs),{
+      style: f => ({
+        color: '#c0392b',
+        weight: scoreToWeight((f._m2aSc||0) / Math.max(accessMax, 1), 7),
+        opacity: f._inStudy===false ? 0.55 : 0.85,  // buffer segs slightly faded
+        lineCap: 'round',
+        lineJoin: 'round'
+      }),
       onEachFeature:(f,l)=>l.on('click',()=>showInfo(f))
     }).addTo(map);
   }
 
-  // Junction layer — circle markers at intersection midpoints
-  if(vis.j && lastGraph){
-    const jPts = buildJunctionPoints(segments, lastGraph);
-    const jFeatures = jPts.map(p=>({lat:p.lat,lon:p.lon,j:p.j}));
-    const jColors = {1:M2_COLORS.j1, 2:M2_COLORS.j2, 3:M2_COLORS.j3};
-    const jRad   = {1:6, 2:4, 3:3};
-    m2JunctionLayer = L.layerGroup(
-      jFeatures.map(p=>L.circleMarker([p.lat,p.lon],{
-        radius: jRad[p.j]||4,
-        fillColor: jColors[p.j]||M2_COLORS.j1,
-        color:'#fff', weight:1, fillOpacity:0.85
-      }))
-    ).addTo(map);
-  }
-
-  // Update legend
   const legM2 = document.getElementById('leg-m2');
-  if(legM2) legM2.style.display='block';
-  const leg1 = document.querySelector('#legend .leg-title');
-  if(leg1) leg1.style.display='block';
+  if(legM2) legM2.style.display = 'block';
 }
 
 // Store Method 2 scores on a neighbourhood result
@@ -4012,50 +3953,9 @@ function gradeDiagnostic(segs){
   });
 }
 
-// ── Legend updates per mode ─────────────────────
-const MODE_LEGENDS = {
-  composite: {
-    pwn1:'PWN 1 — Critical Backbone',
-    pwn2:'PWN 2 — Secondary Corridor',
-    pwn3:'PWN 3 — Local Feeder',
-    pwn4:'PWN 4 — Spatial Enclave'
-  },
-  diagnostic: {
-    pwn1:'Safety + Access — vehicle conflict & pedestrian route',
-    pwn2:'Access + Junctions — approach corridor, complex crossings',
-    pwn3:'Safety only / Last-leg — forced-use or isolated destination',
-    pwn4:'Background — low priority across all measures'
-  }
-};
-
-function updateModeLegend(){
-  const mode = _analysisMode;
-  const labels = MODE_LEGENDS[mode] || MODE_LEGENDS.composite;
-  const rows = {pwn1:'leg-pwn1',pwn2:'leg-pwn2',pwn3:'leg-pwn3',pwn4:'leg-pwn4'};
-  Object.entries(rows).forEach(([tier,id])=>{
-    const el = document.getElementById(id);
-    if(!el) return;
-    // Replace the text node (second child, after the .leg-line div)
-    const span = el.querySelector('.leg-stat');
-    // Update the text between .leg-line and .leg-stat
-    const txt = labels[tier] || tier;
-    // Replace all text nodes
-    Array.from(el.childNodes).forEach(n=>{ if(n.nodeType===3) n.textContent=''; });
-    // Set the label text directly
-    if(span) el.insertBefore(document.createTextNode(txt), span);
-    else el.appendChild(document.createTextNode(txt));
-  });
-  // Update legend title
-  const modeNames = {composite:'PWN Grade', diagnostic:'Investment Diagnostic'};
-  const titleEl = document.querySelector('#legend .leg-title');
-  if(titleEl) titleEl.textContent = modeNames[mode]||'PWN Grade';
-}
-
-function initModeUI(){
-  const btn = document.getElementById('mtb-composite');
-  if(btn) btn.classList.add('active');
-  syncM2Thresholds();
-}
+// Mode legend removed — always diagnostic
+function updateModeLegend(){}
+function initModeUI(){}
 
 function grade(segs,ssW,proxW,p1t,p2t,p3t,wN,maxing){
   // Composite of the three Space Syntax measures → s._ss.
@@ -4861,7 +4761,9 @@ function toggleAtt(i){
   const tog=document.getElementById('tog-att-'+i);
   if(tog) tog.classList.toggle('on',attVis[i]);
   if(attLayers[i]){ attVis[i]?map.addLayer(attLayers[i]):map.removeLayer(attLayers[i]); }
-  if(segments.length>0) reGrade();
+  // Also show/hide POI markers if they exist separately
+  if(poiMarkerLayers[i]){ attVis[i]?map.addLayer(poiMarkerLayers[i]):map.removeLayer(poiMarkerLayers[i]); }
+  renderStep1VisToggles(); // refresh Step 1 checklist
 }
 function toggleBase(){
   baseVis=!baseVis;
@@ -5133,31 +5035,16 @@ async function runAnalysis(_fromBatch){
   computeProximity(allSegs,sGraph,attConfigs);
   dbg('Proximity done','OK');
 
-  // Grade — always compute BOTH methods so both are available for viewing/storage.
-  // Method 1: composite score (percentile-banded SS + proximity)
-  setP(92,'Grading — Method 1 (Composite)...','grade');await sleep(20);
-  dbg('Grading Method 1...','STAGE');
-  grade(coreSegs, ssW, proxW, p1t, p2t, p3t, wN, _comp.maxing);
-  // Store Method 1 _pwn/_final on each segment before overwriting for M2
-  coreSegs.forEach(s=>{ s._pwn1=s._pwn; s._final1=s._final; });
-
-  // Method 2: score all three dimensions (Safety/Access/Junction)
-  setP(94,'Grading — Method 2 (Investment Diagnostic)...','grade');await sleep(20);
-  dbg('Grading Method 2...','STAGE');
-  scoreM2(coreSegs); // sets _m2s, _m2a, _m2j on each segment
-
-  // Restore the active mode's grade to _pwn/_final for display
-  if(getAnalysisMode()==='diagnostic'){
-    gradeDiagnostic(coreSegs); // sets _pwn/_final from M2 logic
-  } else {
-    coreSegs.forEach(s=>{ s._pwn=s._pwn1; s._final=s._final1; }); // restore M1
-  }
-  dbg('Both methods graded.','OK');
-  // Buffer segments get no grade (won't be displayed as PWN)
+  // Grade — Method 2 only (Safety + Access continuous scoring)
+  setP(92,'Scoring safety + access corridors...','grade');await sleep(20);
+  dbg('Scoring M2 Safety + Access...','STAGE');
+  scoreM2(coreSegs);
+  gradeDiagnostic(coreSegs);
+  dbg('M2 scoring complete.','OK');
   allSegs.forEach(s=>{ if(!s._inStudy) s._pwn=null; });
   segments=coreSegs;
-  allSegments=allSegs;        // keep buffer segs for corridor display
-  const sSegs=coreSegs; // alias for downstream code (stats, reveal)
+  allSegments=allSegs;
+  const sSegs=coreSegs;
 
   // Hide progress overlay — animated reveal takes over
   setP(99,'Animating results...','reveal');
@@ -5177,14 +5064,10 @@ async function runAnalysis(_fromBatch){
     if(_nb){
       _nb.status='analysed';
       try{
-        // Method 1 result: restore M1 grades, clone, then re-apply active mode
-        const m1Segs = sSegs.map(s=>{ const c=cloneSeg(s); c._pwn=s._pwn1||s._pwn; c._final=s._final1||s._final; return c; });
-        _nb.result = { segs: m1Segs, stats: captureStats(m1Segs), at: Date.now() };
-
-        // Method 2 result: clone with M2 scores, then apply diagnostic grades
-        const m2Segs = sSegs.map(s=>cloneSeg(s));
-        gradeDiagnostic(m2Segs); // sets _pwn/_final from M2 logic on the clones
-        _nb.result2 = { segs: m2Segs, stats: captureStats(m2Segs), at: Date.now() };
+        // Store M2 scored segments
+        const storedSegs = sSegs.map(s=>cloneSeg(s));
+        _nb.result  = { segs: storedSegs, stats: captureStats(storedSegs), at: Date.now() };
+        _nb.result2 = _nb.result; // same result — no M1 distinction
       }catch(e){
         console.error('Result storage error:',e);
         _nb.result = { segs: sSegs.slice(), stats:null, at:Date.now() };
@@ -5415,7 +5298,6 @@ if(typeof syncPwnThresholds==='function') syncPwnThresholds('p1t');
 if(typeof syncComposite==='function') syncComposite();
 if(typeof renderNbhdList==='function'){ renderNbhdList(); updateNbhdCount(); }
 if(typeof updateExportPanel==='function') updateExportPanel();
-if(typeof initModeUI==='function') initModeUI();
 </script>
 </body>
 </html>
