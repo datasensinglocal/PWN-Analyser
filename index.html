@@ -329,7 +329,7 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
     <div class="sb-eyebrow">Urban Mobility Analysis</div>
     <div class="sb-title">PWN Analyser</div>
     <div class="sb-sub">Priority Walking Network · Space Syntax + Trip Attractors</div>
-    <div class="sb-version" id="sb-version">v3.54 · buffer cap 4000 · auto ctx · RC through cleanNetwork · 2026-09-22</div>
+    <div class="sb-version" id="sb-version">v3.55 · 2.5km buffer · debug buffer clip · RC in clipNet · 2026-09-23</div>
   </div>
   <div class="sb-tabs">
     <button class="tab active" onclick="switchTab('data')">Data</button>
@@ -455,7 +455,7 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
           <div class="step-num"><span>3</span></div>
           <div class="step-body">
             <div class="step-title-row"><span class="step-title">Set global context <span style="font-size:9px;color:#666;font-weight:400">· optional</span></span><span class="step-info-ico" id="step-info-3" onclick="toggleStepInfo(3)" title="What to do">i</span></div>
-            <div class="step-desc" id="step-desc-3">Auto-generates a 10km buffer around each tile — gives the 60-min Choice pass enough network to reach its full radius. Runs automatically when you press Run. Click here to preview the buffers before running.</div>
+            <div class="step-desc" id="step-desc-3">Auto-generates a 2.5km buffer around each tile — gives the 60-min Choice pass enough network to reach its full radius. Runs automatically when you press Run. Click here to preview the buffers before running.</div>
             <!-- Context controls -->
             <div class="boundary-group" id="ctx-group" style="margin-top:8px">
               <div style="display:flex;gap:5px;align-items:stretch">
@@ -2066,7 +2066,7 @@ function autoGenerateContext(){
   // Buffer must be at least 2.5km so the 30-min Choice pass (R=2500m) has
   // enough network to reach its full radius. 1.25km was too small — the graph
   // ran out of roads before the radius was satisfied, causing fragmented S1/S2.
-  const bufKm = Math.max(10.0, maxAttR/1000);
+  const bufKm = Math.max(2.5, maxAttR/1000); // 2.5km buffer — enough for 60-min SS to reach arterials
 
   // ── MESH / MULTI-NEIGHBOURHOOD MODE: buffer each polygon individually ──
   if(typeof neighbourhoods!=='undefined' && neighbourhoods.length>0){
@@ -4388,7 +4388,11 @@ function clipNet(net,bCoords){
             if(ptInPoly(mx,my)){ keep=true; break; }
           }
         }
-        if(keep) out.push(turf.lineString(coords));
+        if(keep){
+          const feat = turf.lineString(coords);
+          if(f.properties?.Road_Class) feat.properties.Road_Class = f.properties.Road_Class;
+          out.push(feat);
+        }
       }
     }catch(ex){}
   }
@@ -5171,9 +5175,11 @@ async function runAnalysis(_fromBatch){
   // Buffer ring — coarse. Segment the full buffer network at 200m, then DROP
   // any segment whose midpoint is inside the core (avoid double-coverage).
   let bufferSegs = [];
+  dbg('Buffer boundary: '+(bufBoundary?bufBoundary.length+' pts':'NONE')+' | same as core: '+(bufBoundary===coreBoundary),'STAGE');
   if(bufBoundary && bufBoundary!==coreBoundary){
     setP(20,'Segmenting buffer ring (coarse, roads only)...','seg');await sleep(20);
     let bufNet = clipNet(JSON.parse(JSON.stringify(city.network)), bufBoundary);
+    dbg('Buffer clip: '+((bufNet.features||[]).length)+' features from '+((city.network.features||[]).length)+' total','STAGE');
     const bufSimple = segRoadsSimple(bufNet, 400);
     // Build core polygon for inside-test
     let corePoly=null;
