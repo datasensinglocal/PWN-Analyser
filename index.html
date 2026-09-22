@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>PWN Analyser — Priority Walking Network</title>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 body{display:flex;height:100vh;overflow:hidden;font-family:'Segoe UI',system-ui,sans-serif;background:#1a1a1a;color:#e2ddd6}
@@ -317,10 +317,7 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
 .sb-version{font-size:9px;color:#555;font-family:monospace;letter-spacing:.04em;margin-top:3px}
 .leg-stat{margin-left:auto;padding-left:10px;font-family:monospace;font-size:9px;color:#999;white-space:nowrap}
 .leg-row{display:flex;align-items:center}
-.s1-vis-row{display:flex;align-items:center;gap:7px;padding:4px 6px;border-radius:4px;cursor:pointer;user-select:none;border:1px solid #1e1e1e;background:#111;font-size:10px;color:#aaa}
-.s1-vis-row:hover{border-color:#3a3a3a;color:#e2ddd6}
-.s1-vis-check{width:11px;height:11px;border-radius:2px;border:1px solid #3a3a3a;flex-shrink:0;background:#1a1a1a}
-.s1-vis-check.on{background:#c8a96e;border-color:#c8a96e}
+.s1-vis-row{display:flex;align-items:center;gap:7px;padding:3px 0;font-size:10px;color:#aaa}
 .s1-vis-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0}
 .s1-vis-lbl{flex:1}
 .s1-vis-count{font-size:9px;color:#555;font-family:monospace}
@@ -332,7 +329,7 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
     <div class="sb-eyebrow">Urban Mobility Analysis</div>
     <div class="sb-title">PWN Analyser</div>
     <div class="sb-sub">Priority Walking Network · Space Syntax + Trip Attractors</div>
-    <div class="sb-version" id="sb-version">v3.26 · folder load fix · 2026-06-27</div>
+    <div class="sb-version" id="sb-version">v3.51 · cdnjs · Class07 excluded from Safety · 2026-06-28</div>
   </div>
   <div class="sb-tabs">
     <button class="tab active" onclick="switchTab('data')">Data</button>
@@ -458,7 +455,7 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
           <div class="step-num"><span>3</span></div>
           <div class="step-body">
             <div class="step-title-row"><span class="step-title">Set global context <span style="font-size:9px;color:#666;font-weight:400">· optional</span></span><span class="step-info-ico" id="step-info-3" onclick="toggleStepInfo(3)" title="What to do">i</span></div>
-            <div class="step-desc" id="step-desc-3">Generates a ≈2.5 km buffer around the study area — wide enough for the 30-min Choice pass to reach its full radius. For a single boundary the buffer is editable. For a mesh, it is computed automatically per tile.</div>
+            <div class="step-desc" id="step-desc-3">Generates a ≈10 km buffer around the study area — the 60-min Choice pass (5000m radius) needs at least 10km of surrounding network to find genuine through-routes and differentiate arterials from local streets.</div>
             <!-- Context controls -->
             <div class="boundary-group" id="ctx-group" style="margin-top:8px">
               <div style="display:flex;gap:5px;align-items:stretch">
@@ -484,7 +481,7 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
             <!-- Analysis layers — always shown after run -->
             <div id="mode-switcher" style="display:none;margin-top:10px;border-top:1px solid #1e1e1e;padding-top:10px">
               <!-- Method 2 layer toggles -->
-              <div id="m2-layer-toggles" style="display:block;margin-top:10px;border-top:1px solid #1e1e1e;padding-top:8px">
+              <div id="m2-layer-toggles" style="margin-top:10px;border-top:1px solid #1e1e1e;padding-top:8px">
                 <div style="font-size:9px;color:#555;margin-bottom:6px;letter-spacing:.05em;text-transform:uppercase;font-weight:600">Visible layers</div>
                 <div style="display:flex;gap:8px">
                   <label class="m2-tog-lbl"><input type="checkbox" id="m2-safety" checked onchange="renderM2Layers()"/><span style="display:inline-block;width:24px;height:4px;background:#c0392b;border-radius:2px;flex-shrink:0"></span>Safety</label>
@@ -530,17 +527,8 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
 
             <!-- Single analysis panel -->
             <div id="export-single-panel" style="margin-top:8px">
-              <div style="font-size:9px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#555;margin-bottom:7px">Current analysis</div>
-
-              <!-- Tier checkboxes -->
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 8px;margin-bottom:8px">
-                <label class="exp-tier-lbl"><input type="checkbox" id="exp-s-pwn1" checked style="accent-color:#D0021B"/><span class="exp-tier-dot" style="background:#D0021B"></span>PWN 1</label>
-                <label class="exp-tier-lbl"><input type="checkbox" id="exp-s-pwn2" checked style="accent-color:#E87722"/><span class="exp-tier-dot" style="background:#E87722"></span>PWN 2</label>
-                <label class="exp-tier-lbl"><input type="checkbox" id="exp-s-pwn3" checked style="accent-color:#F5C518"/><span class="exp-tier-dot" style="background:#F5C518"></span>PWN 3</label>
-                <label class="exp-tier-lbl"><input type="checkbox" id="exp-s-pwn4" checked style="accent-color:#1565C0"/><span class="exp-tier-dot" style="background:#1565C0"></span>PWN 4</label>
-              </div>
-
-              <!-- Format + download -->
+              <div style="font-size:9px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#555;margin-bottom:6px">Current analysis</div>
+              <div style="font-size:9px;color:#666;margin-bottom:6px">Exports Safety corridors (red) + Access corridors (blue) as separate files.</div>
               <div style="display:flex;gap:5px;align-items:center">
                 <select id="exp-s-fmt" class="mode-sel" style="flex:1;height:28px">
                   <option value="geojson">GeoJSON</option>
@@ -548,7 +536,7 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
                 </select>
                 <button class="btn" onclick="exportSingleTiers()" style="flex:1;font-size:9px;padding:7px 0;background:#1a1a1a;border-color:#3a3a3a;color:#c8a96e">⬇ Download</button>
               </div>
-              <div id="exp-s-note" style="font-size:9px;color:#555;margin-top:5px">One file per selected tier.</div>
+              <div id="exp-s-note" style="font-size:9px;color:#555;margin-top:5px"></div>
             </div>
 
             <!-- Multi-neighbourhood panel (shown when tiles exist) -->
@@ -616,20 +604,16 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
       </div>
       <div class="section">
         <div class="sec-label">PWN Grade Thresholds</div>
-        <div class="pwn-row"><div class="pwn-sw" style="background:#D0021B"></div><span class="pwn-nm">PWN 1</span><input type="range" style="flex:1" id="p1t" min="5" max="35" value="15" step="1" oninput="syncPwnThresholds('p1t')"/><span class="pwn-val" id="p1v">15%</span></div>
-        <div class="pwn-row"><div class="pwn-sw" style="background:#E87722"></div><span class="pwn-nm">PWN 2</span><input type="range" style="flex:1" id="p2t" min="10" max="40" value="25" step="1" oninput="syncPwnThresholds('p2t')"/><span class="pwn-val" id="p2v">25%</span></div>
-        <div class="pwn-row"><div class="pwn-sw" style="background:#F5C518"></div><span class="pwn-nm">PWN 3</span><input type="range" style="flex:1" id="p3t" min="10" max="40" value="30" step="1" oninput="syncPwnThresholds('p3t')"/><span class="pwn-val" id="p3v">30%</span></div>
-        <div class="pwn-row"><div class="pwn-sw" style="background:#1565C0"></div><span class="pwn-nm">PWN 4</span><span style="flex:1;font-size:10px;color:#666;padding-left:4px">spatial enclaves — the remainder</span><span class="pwn-val" id="p4v">30%</span></div>
-        <div id="pwn-sum-note" style="font-size:10px;color:#484848;margin-top:3px">PWN 1–4 total 100%</div>
+<!-- PWN tier sliders removed — using continuous scoring -->
       </div>
       <!-- ── METHOD 2 THRESHOLDS ── -->
       <div class="section">
         <div class="sec-label">Method 2 — Minimum score to render</div>
         <div style="font-size:9px;color:#666;line-height:1.5;margin-bottom:8px">Streets below the minimum score are hidden. Line weight above that is continuous — higher score = thicker line. No forced tier breaks.</div>
         <div style="font-size:9px;color:#c0392b;font-weight:600;margin-bottom:4px;letter-spacing:.05em">SAFETY — 30-min Choice</div>
-        <div class="w-row"><div class="w-head"><span class="w-lbl">Min score to show</span><span class="w-val" id="m2-ch30-min-v">0.10</span></div><input type="range" id="m2-ch30-min" min="0" max="60" value="10" step="1" oninput="syncM2Thresholds()"/></div>
+        <div class="w-row"><div class="w-head"><span class="w-lbl">Min score to show</span><span class="w-val" id="m2-ch30-min-v">0.55</span></div><input type="range" id="m2-ch30-min" min="0" max="100" value="55" step="1" oninput="syncM2Thresholds()"/></div>
         <div style="font-size:9px;color:#185FA5;font-weight:600;margin:8px 0 4px;letter-spacing:.05em">ACCESS — Integration × proximity</div>
-        <div class="w-row"><div class="w-head"><span class="w-lbl">Min score to show</span><span class="w-val" id="m2-li8-min-v">0.10</span></div><input type="range" id="m2-li8-min" min="0" max="60" value="10" step="1" oninput="syncM2Thresholds()"/></div>
+        <div class="w-row"><div class="w-head"><span class="w-lbl">Min score to show</span><span class="w-val" id="m2-li8-min-v">0.45</span></div><input type="range" id="m2-li8-min" min="0" max="100" value="45" step="1" oninput="syncM2Thresholds()"/></div>
         <div class="w-row"><div class="w-head"><span class="w-lbl">Proximity boost</span><span class="w-val" id="m2-prox-boost-v">1.0×</span></div><input type="range" id="m2-prox-boost" min="0" max="200" value="100" step="10" oninput="syncM2Thresholds()"/></div>
         <div style="font-size:9px;color:#555;line-height:1.45;margin-top:5px">Proximity boost multiplies Integration score for streets near trip attractors. 1.0× = doubles their score. 0× = no boost.</div>
       </div>
@@ -651,10 +635,10 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
       </div>
       <div class="section">
         <div class="sec-label">PWN Layers</div>
-        <div class="tog-row on" id="tog-pwn1" onclick="togglePWN('pwn1')"><div class="tog-cbx"></div><div class="tog-swatch" style="background:#D0021B"></div>PWN 1 — Critical Backbone</div>
-        <div class="tog-row on" id="tog-pwn2" onclick="togglePWN('pwn2')"><div class="tog-cbx"></div><div class="tog-swatch" style="background:#E87722"></div>PWN 2 — Secondary Corridor</div>
-        <div class="tog-row on" id="tog-pwn3" onclick="togglePWN('pwn3')"><div class="tog-cbx"></div><div class="tog-swatch" style="background:#F5C518"></div>PWN 3 — Local Feeder</div>
-        <div class="tog-row on" id="tog-pwn4" onclick="togglePWN('pwn4')"><div class="tog-cbx"></div><div class="tog-swatch" style="background:#1565C0"></div>PWN 4 — Spatial Enclave</div>
+        <div class="tog-row on" id="tog-pwn1" style="display:none" onclick="togglePWN('pwn1')"><div class="tog-cbx"></div><div class="tog-swatch" style="background:#D0021B"></div>PWN 1 — Critical Backbone</div>
+        <div class="tog-row on" id="tog-pwn2" style="display:none" onclick="togglePWN('pwn2')"><div class="tog-cbx"></div><div class="tog-swatch" style="background:#E87722"></div>PWN 2 — Secondary Corridor</div>
+        <div class="tog-row on" id="tog-pwn3" style="display:none" onclick="togglePWN('pwn3')"><div class="tog-cbx"></div><div class="tog-swatch" style="background:#F5C518"></div>PWN 3 — Local Feeder</div>
+        <div class="tog-row on" id="tog-pwn4" style="display:none" onclick="togglePWN('pwn4')"><div class="tog-cbx"></div><div class="tog-swatch" style="background:#1565C0"></div>PWN 4 — Spatial Enclave</div>
       </div>
       <div class="section">
         <div class="sec-label">Attractor Layers</div>
@@ -674,10 +658,10 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
 
   <div class="stats-footer" id="stats-footer">
     <div class="stats-inner">
-      <div class="stat"><div class="stat-val" id="s1" style="color:#D0021B">0</div><div class="stat-lbl">PWN 1</div></div>
-      <div class="stat"><div class="stat-val" id="s2" style="color:#E87722">0</div><div class="stat-lbl">PWN 2</div></div>
-      <div class="stat"><div class="stat-val" id="s3" style="color:#F5C518">0</div><div class="stat-lbl">PWN 3</div></div>
-      <div class="stat"><div class="stat-val" id="s4" style="color:#1565C0">0</div><div class="stat-lbl">PWN 4</div></div>
+      <div class="stat"><div class="stat-val" id="s1" style="color:#c0392b">0</div><div class="stat-lbl">Safety</div></div>
+      <div class="stat"><div class="stat-val" id="s2" style="color:#185FA5">0</div><div class="stat-lbl">Access</div></div>
+      <div class="stat"><div class="stat-val" id="s3" style="color:#666">0</div><div class="stat-lbl">Both</div></div>
+      <div class="stat"><div class="stat-val" id="s4" style="color:#555">0</div><div class="stat-lbl">Segs</div></div>
       <div class="stat"><div class="stat-val" id="st" style="color:#555">0</div><div class="stat-lbl">Segs</div></div>
     </div>
   </div>
@@ -694,15 +678,20 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
     </div>
   </div>
   <div class="legend" id="legend">
-    <div class="leg-title">PWN Grade</div>
-    <div class="leg-row" id="leg-pwn1"><div class="leg-line" style="background:#D0021B"></div>PWN 1 — Critical<span class="leg-stat" id="lst-pwn1"></span></div>
-    <div class="leg-row" id="leg-pwn2"><div class="leg-line" style="background:#E87722"></div>PWN 2 — Secondary<span class="leg-stat" id="lst-pwn2"></span></div>
-    <div class="leg-row" id="leg-pwn3"><div class="leg-line" style="background:#F5C518"></div>PWN 3 — Feeder<span class="leg-stat" id="lst-pwn3"></span></div>
-    <div class="leg-row" id="leg-pwn4"><div class="leg-line" style="background:#1565C0"></div>PWN 4 — Enclave<span class="leg-stat" id="lst-pwn4"></span></div>
+    <div class="leg-title" style="display:none">PWN Grade</div>
+    <div class="leg-row" id="leg-pwn1" style="display:none"><div class="leg-line" style="background:#D0021B"></div>PWN 1 — Critical<span class="leg-stat" id="lst-pwn1"></span></div>
+    <div class="leg-row" id="leg-pwn2" style="display:none"><div class="leg-line" style="background:#E87722"></div>PWN 2 — Secondary<span class="leg-stat" id="lst-pwn2"></span></div>
+    <div class="leg-row" id="leg-pwn3" style="display:none"><div class="leg-line" style="background:#F5C518"></div>PWN 3 — Feeder<span class="leg-stat" id="lst-pwn3"></span></div>
+    <div class="leg-row" id="leg-pwn4" style="display:none"><div class="leg-line" style="background:#1565C0"></div>PWN 4 — Enclave<span class="leg-stat" id="lst-pwn4"></span></div>
     <div class="leg-row conn-row" id="leg-conn" style="display:none"><div class="leg-line" style="background:#00e0c0;border-top:2px dashed #00e0c0;height:0"></div>Network Gap Closer</div>
     <div class="leg-row" id="leg-corridor" style="display:none"><div class="leg-line" style="background:#c8a96e;border-top:2px dashed #c8a96e;height:0"></div>Attractor corridor (out-of-area pull)</div>
     <!-- Method 2 legend — shown only in diagnostic mode -->
     <div id="leg-m2" style="display:none">
+      <div class="leg-title" style="margin-top:6px">Street network</div>
+      <div style="display:flex;align-items:center;gap:6px;padding:2px 0">
+        <div style="width:20px;height:2px;background:#888;border-radius:1px;opacity:0.5"></div>
+        <span class="leg-label" style="font-size:10px;color:var(--text-secondary)">All streets — background</span>
+      </div>
       <div class="leg-title" style="margin-top:6px">Safety corridors</div>
       <div style="display:flex;align-items:center;gap:6px;padding:3px 0">
         <div style="display:flex;gap:2px;align-items:center">
@@ -832,8 +821,8 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
   <div class="toast" id="toast"></div>
 </div>
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@turf/turf@6.5.0/turf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Turf.js/6.5.0/turf.min.js"></script>
 <script>
 /* ════════════════════════════════════════════════
    STATE
@@ -996,17 +985,23 @@ function kmlToGeoJSON(txt){
   }
   kml.querySelectorAll('Placemark').forEach(pm=>{
     const props={name:(pm.querySelector('name')||{}).textContent||''};
+    // Capture all SimpleData fields (Road_Class, Road_Type etc.)
+    pm.querySelectorAll('SimpleData').forEach(sd=>{
+      const k=sd.getAttribute('name');
+      if(k) props[k]=sd.textContent.trim();
+    });
+    const addFeat=(geom)=>features.push({type:'Feature',properties:props,geometry:geom});
     const pt=pm.querySelector('Point coordinates');
-    if(pt){const c=parseCoords(pt.textContent);if(c.length)features.push({type:'Feature',properties:props,geometry:{type:'Point',coordinates:c[0]}});}
+    if(pt){const c=parseCoords(pt.textContent);if(c.length)addFeat({type:'Point',coordinates:c[0]});}
     const ln=pm.querySelector('LineString coordinates');
-    if(ln){const c=parseCoords(ln.textContent);if(c.length>=2)features.push({type:'Feature',properties:props,geometry:{type:'LineString',coordinates:c}});}
+    if(ln){const c=parseCoords(ln.textContent);if(c.length>=2)addFeat({type:'LineString',coordinates:c});}
     const mg=pm.querySelector('MultiGeometry');
     if(mg){
-      mg.querySelectorAll('LineString coordinates').forEach(ls=>{const c=parseCoords(ls.textContent);if(c.length>=2)features.push({type:'Feature',properties:props,geometry:{type:'LineString',coordinates:c}});});
-      mg.querySelectorAll('Point coordinates').forEach(p=>{const c=parseCoords(p.textContent);if(c.length)features.push({type:'Feature',properties:props,geometry:{type:'Point',coordinates:c[0]}});});
+      mg.querySelectorAll('LineString coordinates').forEach(ls=>{const c=parseCoords(ls.textContent);if(c.length>=2)addFeat({type:'LineString',coordinates:c});});
+      mg.querySelectorAll('Point coordinates').forEach(p=>{const c=parseCoords(p.textContent);if(c.length)addFeat({type:'Point',coordinates:c[0]});});
     }
     const poly=pm.querySelector('Polygon outerBoundaryIs LinearRing coordinates');
-    if(poly){const c=parseCoords(poly.textContent);if(c.length>=3){if(c[0][0]!==c[c.length-1][0])c.push(c[0]);features.push({type:'Feature',properties:props,geometry:{type:'Polygon',coordinates:[c]}});}}
+    if(poly){const c=parseCoords(poly.textContent);if(c.length>=3){if(c[0][0]!==c[c.length-1][0])c.push(c[0]);addFeat({type:'Polygon',coordinates:[c]});}}
   });
   return{type:'FeatureCollection',features};
 }
@@ -1502,9 +1497,12 @@ function cloneSeg(s){
     geometry: s.geometry,
     _pwn:s._pwn, _final:s._final, _ss:s._ss, _coN:s._coN, _li8:s._li8, _ch:s._ch,
     _ch30:s._ch30,
+    _ch30_raw:s._ch30_raw||0,  // raw count for city-wide normalisation
+    _li8_raw:s._li8_raw||0,    // raw count for city-wide normalisation
     _px:s._px, _pxRaw:s._pxRaw, _pxDet:s._pxDet, _pxGrade:s._pxGrade, _co:s._co, _id:s._id,
     _gated:s._gated, _connector:s._connector,
     _m2s:s._m2s, _m2a:s._m2a, _m2j:s._m2j,
+    _roadClass:s._roadClass||null,
     _nbhd:(typeof selectedNbhdId!=='undefined'?selectedNbhdId:null)
   };
 }
@@ -1515,8 +1513,10 @@ function captureStats(segs){
 }
 
 async function analyseAllNeighbourhoods(){
+  dbg('analyseAllNeighbourhoods called — nbhds:'+neighbourhoods.length+' batchRunning:'+batchRunning,'STAGE');
   if(batchRunning){ showToast('A batch is already running'); return; }
-  const todo = neighbourhoods.filter(nb=>nb.status!=='analysed'); // skip already-done
+  const todo = neighbourhoods.filter(nb=>nb.status!=='analysed');
+  dbg('todo:'+todo.length+' pending tiles','STAGE');
   if(!todo.length){ showToast('All neighbourhoods already analysed'); return; }
 
   batchRunning=true; batchStop=false;
@@ -1530,14 +1530,30 @@ async function analyseAllNeighbourhoods(){
     selectedNbhdId = nb.id;
     try{ applyBoundary('study', JSON.parse(JSON.stringify(nb.ring))); }catch(e){}
     // Set this tile's own context buffer if available (generated in Step 3)
+    // If not set, auto-generate a 2.5km buffer so SS has enough network
     if(nb.ctxRing && nb.ctxRing.length>=3){
       bounds.ctx = JSON.parse(JSON.stringify(nb.ctxRing));
+    } else {
+      // Auto-generate 2.5km buffer for this tile
+      try{
+        const ring=[...nb.ring,nb.ring[0]];
+        const poly=turf.polygon([ring]);
+        const buf=turf.buffer(poly,5.0,{units:'kilometers'});
+        if(buf&&buf.geometry){
+          const simp=turf.simplify(buf,{tolerance:0.001,highQuality:false});
+          const coords=simp.geometry.type==='Polygon'?simp.geometry.coordinates[0]:simp.geometry.coordinates[0][0];
+          bounds.ctx=coords.map(c=>[c[0],c[1]]);
+          nb.ctxRing=bounds.ctx; // cache for reuse
+        }
+      }catch(e){ dbg('ctx auto-gen failed for #'+nb.id+': '+e,'ERR'); }
     }
     // give the context auto-gen a moment (applyBoundary schedules it ~200ms)
     await sleep(260);
     try{
+      dbg('Starting analysis for tile #'+nb.id+' bounds.study:'+!!bounds.study+' bounds.ctx:'+!!bounds.ctx,'STAGE');
       await runAnalysis(true);   // true = called from batch, skip mesh dispatch
-    }catch(e){ console.error('analysis failed for #'+nb.id, e); }
+      dbg('Finished analysis for tile #'+nb.id+' status:'+nb.status,'OK');
+    }catch(e){ dbg('analysis FAILED for #'+nb.id+': '+e,'ERR'); console.error('analysis failed for #'+nb.id, e); }
     done++;
     setBatchProgress(done, todo.length, nb, true);
     await sleep(120); // small breath so the UI paints the tick
@@ -1557,6 +1573,114 @@ function stopBatch(){ batchStop=true; showToast('Stopping after the current neig
 // ── Stage 5: combined view of all analysed tiles ──
 function analysedTiles(){ return neighbourhoods.filter(nb=>nb.status==='analysed' && nb.result && nb.result.segs); }
 
+function crossTileRescale(segs){
+  smoothNetworkScores(segs);
+
+  const p95 = (arr) => arr[Math.floor(arr.length*0.95)] || arr[arr.length-1] || 1;
+  const p70 = (arr) => arr[Math.floor(arr.length*0.70)] || arr[arr.length-1] || 0.5;
+
+  // Use RAW counts if available — city-wide normalisation from actual Dijkstra counts
+  // This is the correct signal: raw counts are comparable across tiles because
+  // they come from the same 60-min Dijkstra on a 10km buffer surrounding each tile
+  const hasRaw = segs.some(s=>(s._ch30_raw||0)>0);
+  if(hasRaw){
+    const ch30R = segs.map(s=>s._ch30_raw||0).filter(v=>v>0).sort((a,b)=>a-b);
+    const li8R  = segs.map(s=>s._li8_raw||0).filter(v=>v>0).sort((a,b)=>a-b);
+    const cCh = p95(ch30R), cLi = p95(li8R);
+    segs.forEach(s=>{
+      s._ch30_mesh = Math.min(1,(s._ch30_raw||0)/cCh);
+      s._li8_mesh  = Math.min(1,(s._li8_raw||0)/cLi);
+    });
+    dbg('City-wide normalisation from RAW counts — Ch30 p95:'+cCh.toFixed(4)+' Li8 p95:'+cLi.toFixed(4),'STAGE');
+  } else {
+    const ch30V = segs.map(s=>s._ch30||0).filter(v=>v>0).sort((a,b)=>a-b);
+    const li8V  = segs.map(s=>s._li8||0).filter(v=>v>0).sort((a,b)=>a-b);
+    const cCh = p95(ch30V), cLi = p95(li8V);
+    segs.forEach(s=>{
+      s._ch30_mesh = Math.min(1,(s._ch30||0)/cCh);
+      s._li8_mesh  = Math.min(1,(s._li8||0)/cLi);
+    });
+    dbg('City-wide normalisation from per-tile scores (raw not available)','STAGE');
+  }
+
+  const FLOOR_S = 0.35;
+  const li8M = segs.map(s=>s._li8_mesh||0).filter(v=>v>0).sort((a,b)=>a-b);
+  const FLOOR_A = parseFloat(p70(li8M).toFixed(2));
+
+  const chEl=document.getElementById('m2-ch30-min'),chVl=document.getElementById('m2-ch30-min-v');
+  const liEl=document.getElementById('m2-li8-min'), liVl=document.getElementById('m2-li8-min-v');
+  if(chEl){chEl.value=Math.round(FLOOR_S*100); if(chVl)chVl.textContent=FLOOR_S.toFixed(2);}
+  if(liEl){liEl.value=Math.round(FLOOR_A*100); if(liVl)liVl.textContent=FLOOR_A.toFixed(2);}
+  dbg('Floors — Safety:'+FLOOR_S+' Access:'+FLOOR_A,'STAGE');
+}
+
+// Smooth Ch30 and Li8 scores along the road network graph
+// Segments that are true arterials have high-scoring neighbours — their average stays high
+// Isolated high-scoring fragments get pulled toward their low-scoring neighbours — they fade
+function smoothNetworkScores(segs){
+  const SNAP = 0.0003; // ~30m in degrees
+  const GRID = 0.001;
+
+  // Build spatial grid of segment endpoints
+  const grid = {};
+  const key = (x,y) => Math.floor(x/GRID)+','+Math.floor(y/GRID);
+  const addPt = (x,y,idx) => { const k=key(x,y); if(!grid[k]) grid[k]=[]; grid[k].push(idx); };
+  const nearPts = (x,y) => {
+    const gx=Math.floor(x/GRID), gy=Math.floor(y/GRID), res=[];
+    for(let dx=-1;dx<=1;dx++) for(let dy=-1;dy<=1;dy++){
+      const k=(gx+dx)+','+(gy+dy); if(grid[k]) res.push(...grid[k]);
+    }
+    return res;
+  };
+
+  // Compute axial angle of a segment (0–180°)
+  const angle = (s) => {
+    if(!s.geometry||!s.geometry.coordinates||s.geometry.coordinates.length<2) return null;
+    const c=s.geometry.coordinates;
+    const dx=c[c.length-1][0]-c[0][0], dy=c[c.length-1][1]-c[0][1];
+    return (Math.atan2(dy,dx)*180/Math.PI+180)%180;
+  };
+
+  const endpts = segs.map((s,i)=>{
+    if(!s.geometry||!s.geometry.coordinates||!s.geometry.coordinates.length) return null;
+    const c=s.geometry.coordinates;
+    const se=c[0], ee=c[c.length-1];
+    addPt(se[0],se[1],i); addPt(ee[0],ee[1],i);
+    return {s:se, e:ee, ang:angle(s)};
+  });
+
+  const ch30Orig = segs.map(s=>s._ch30||0);
+  const li8Orig  = segs.map(s=>s._li8||0);
+  const ANG_TOL  = 35; // degrees — only smooth with neighbours within 35° of same direction
+
+  segs.forEach((s,i)=>{
+    if(!endpts[i]) return;
+    const {s:si,e:ei,ang:ai}=endpts[i];
+    const neighbours=new Set();
+    [si,ei].forEach(pt=>{
+      nearPts(pt[0],pt[1]).forEach(j=>{
+        if(j===i||!endpts[j]) return;
+        const {s:sj,e:ej,ang:aj}=endpts[j];
+        const endConn =
+          (Math.abs(pt[0]-sj[0])<SNAP&&Math.abs(pt[1]-sj[1])<SNAP)||
+          (Math.abs(pt[0]-ej[0])<SNAP&&Math.abs(pt[1]-ej[1])<SNAP);
+        if(!endConn) return;
+        // Only smooth with axially aligned neighbours (within ANG_TOL degrees)
+        if(ai!=null && aj!=null){
+          const diff = Math.abs(ai-aj);
+          const angDiff = Math.min(diff, 180-diff);
+          if(angDiff > ANG_TOL) return; // skip perpendicular streets
+        }
+        neighbours.add(j);
+      });
+    });
+    let sumCh=ch30Orig[i]*0.6, sumLi=li8Orig[i]*0.6, wt=0.6;
+    neighbours.forEach(j=>{ sumCh+=ch30Orig[j]*0.2; sumLi+=li8Orig[j]*0.2; wt+=0.2; });
+    if(wt>0){ s._ch30=sumCh/wt; s._li8=sumLi/wt; }
+  });
+  dbg('Axial score smoothing (ANG_TOL '+ANG_TOL+'°) applied to '+segs.length+' segs','STAGE');
+}
+
 function showCombinedResults(){
   const tiles = analysedTiles();
   if(!tiles.length){ showToast('No analysed neighbourhoods to show yet'); return; }
@@ -1564,16 +1688,24 @@ function showCombinedResults(){
   const mode = typeof _analysisMode!=='undefined' ? _analysisMode : 'composite';
 
   if(mode==='diagnostic'){
-    // Method 2: render M2 layers from all tiles' stored m2 scores
     clearM2Layers();
     const all=[];
     tiles.forEach(nb=>{
       const src = nb.result2 && nb.result2.segs ? nb.result2.segs : nb.result.segs;
       src.forEach(s=>all.push(s));
     });
-    // set global segments reference so renderM2Layers can use it
+
+    // Cross-tile rescaling — normalise Ch30 and Li8 across the full mesh
+    // so arterials score consistently high regardless of which tile they're in
+    crossTileRescale(all);
+    dbg('Cross-tile rescale applied to '+all.length+' segments across '+tiles.length+' tiles','STAGE');
+
+    const sc=document.getElementById('m2-safety'); if(sc) sc.checked=true;
+    const ac=document.getElementById('m2-access'); if(ac) ac.checked=true;
     segments = all;
     renderM2Layers();
+    if(m2SafetyLayer) m2SafetyLayer.bringToFront();
+    if(m2AccessLayer) m2AccessLayer.bringToFront();
     updateStats(all);
   } else {
     // Method 1: render standard PWN grades
@@ -1838,7 +1970,14 @@ function applyBoundary(type, coordsLonLat){
   document.getElementById('bl').style.display='block';
   updateBoundaryAreas();
   updateSteps();
-  if(type==='study') setTimeout(()=>{ previewSegmentCount(); updateBoundaryAreas(); }, 200);
+  if(type==='study'){
+    setTimeout(()=>{ previewSegmentCount(); updateBoundaryAreas(); }, 200);
+    // Show POI markers — filtered to buffer if context exists, otherwise skip
+    // (don't show citywide markers; wait for Step 3 to set the buffer)
+    if(atts.some(a=>a.data) && bounds.ctx){
+      buildPOIMarkers(true);
+    }
+  }
 }
 
 function resetBoundary(type){
@@ -1865,7 +2004,7 @@ function autoGenerateContext(){
   // Buffer must be at least 2.5km so the 30-min Choice pass (R=2500m) has
   // enough network to reach its full radius. 1.25km was too small — the graph
   // ran out of roads before the radius was satisfied, causing fragmented S1/S2.
-  const bufKm = Math.max(2.5, maxAttR/1000);
+  const bufKm = Math.max(10.0, maxAttR/1000);
 
   // ── MESH / MULTI-NEIGHBOURHOOD MODE: buffer each polygon individually ──
   if(typeof neighbourhoods!=='undefined' && neighbourhoods.length>0){
@@ -2305,37 +2444,38 @@ function updateExportPanel(){
 function exportSingleTiers(){
   if(!segments || !segments.length){ showToast('Run an analysis first'); return; }
   const fmt = (document.getElementById('exp-s-fmt')||{}).value || 'geojson';
-  const tiers = ['pwn1','pwn2','pwn3','pwn4'].filter(t=>{
-    const cb = document.getElementById('exp-s-'+t);
-    return cb && cb.checked;
-  });
-  if(!tiers.length){ showToast('Select at least one PWN tier'); return; }
-
   const city = _citySlug();
   let downloaded = 0;
-  tiers.forEach(tier=>{
-    const segs = segments.filter(s=>s._pwn===tier);
-    if(!segs.length) return;
-    const label = tier.replace('pwn','pwn');
+
+  // Export Safety corridors
+  const safetySegs = segments.filter(s=>(s._m2sSc||0)>0);
+  if(safetySegs.length){
     if(fmt==='geojson'){
-      const gj = _segsToGeoJSON(segs, { mode:'single', city, tier });
-      _triggerDownload(
-        new Blob([JSON.stringify(gj,null,2)],{type:'application/geo+json'}),
-        city+'_'+tier+'.geojson'
-      );
+      const gj = _segsToGeoJSON(safetySegs, { mode:'safety', city });
+      _triggerDownload(new Blob([JSON.stringify(gj,null,2)],{type:'application/geo+json'}), city+'_safety_corridors.geojson');
     } else {
-      const kml = _segsToKML(segs, city+' — '+PWN_LABELS[tier]);
-      _triggerDownload(
-        new Blob([kml],{type:'application/vnd.google-earth.kml+xml'}),
-        city+'_'+tier+'.kml'
-      );
+      const kml = _segsToKML(safetySegs, city+' — Safety Corridors');
+      _triggerDownload(new Blob([kml],{type:'application/vnd.google-earth.kml+xml'}), city+'_safety_corridors.kml');
     }
     downloaded++;
-  });
+  }
+
+  // Export Access corridors
+  const accessSegs = segments.filter(s=>(s._m2aSc||0)>0);
+  if(accessSegs.length){
+    if(fmt==='geojson'){
+      const gj = _segsToGeoJSON(accessSegs, { mode:'access', city });
+      _triggerDownload(new Blob([JSON.stringify(gj,null,2)],{type:'application/geo+json'}), city+'_access_corridors.geojson');
+    } else {
+      const kml = _segsToKML(accessSegs, city+' — Access Corridors');
+      _triggerDownload(new Blob([kml],{type:'application/vnd.google-earth.kml+xml'}), city+'_access_corridors.kml');
+    }
+    downloaded++;
+  }
 
   const note = document.getElementById('exp-s-note');
   if(note) note.textContent = downloaded+' file'+(downloaded>1?'s':'')+' downloaded.';
-  showToast('Exported '+downloaded+' tier file'+(downloaded>1?'s':'')+' ('+fmt.toUpperCase()+')');
+  showToast('Exported '+downloaded+' file'+(downloaded>1?'s':'')+' ('+fmt.toUpperCase()+')');
 }
 
 // ── MULTI-NEIGHBOURHOOD — integrated mesh export ──
@@ -2622,25 +2762,24 @@ function renderStep1VisToggles(){
   panel.style.display = 'block';
 
   let html = '';
-  // Road network toggle
+  // Road network row
   if(hasNetwork){
-    const netOn = typeof netLayerVisible==='undefined' ? true : netLayerVisible;
-    html += `<label class="s1-vis-row" onclick="toggleNetworkLayer()">
-      <span class="s1-vis-check ${netOn?'on':''}"></span>
-      <span class="s1-vis-dot" style="background:#888;border-radius:2px"></span>
+    html += `<div class="s1-vis-row">
+      <input type="checkbox" ${netLayerVisible!==false?'checked':''} onchange="toggleNetworkLayer()" style="cursor:pointer;accent-color:#c8a96e"/>
+      <span class="s1-vis-dot" style="background:#888;border-radius:2px;width:9px;height:9px;flex-shrink:0"></span>
       <span class="s1-vis-lbl">Road network</span>
-    </label>`;
+    </div>`;
   }
-  // Per-attractor toggles
+  // Per-attractor rows
   atts.forEach((a,i)=>{
     if(!a.data) return;
     const on = attVis[i]!==false;
-    html += `<label class="s1-vis-row" onclick="toggleAtt(${i});renderStep1VisToggles()">
-      <span class="s1-vis-check ${on?'on':''}"></span>
+    html += `<div class="s1-vis-row">
+      <input type="checkbox" ${on?'checked':''} onchange="toggleAtt(${i})" style="cursor:pointer;accent-color:${a.color}"/>
       <span class="s1-vis-dot" style="background:${a.color}"></span>
       <span class="s1-vis-lbl">${a.name}</span>
       <span class="s1-vis-count">${a.count||''}</span>
-    </label>`;
+    </div>`;
   });
   list.innerHTML = html;
 }
@@ -2999,8 +3138,11 @@ function segRoads(net) {
   // ── Step 1: Collect coordinate arrays ──
   const allCoords = [];
   for(const f of (cleanNet.features||[])){
-    if(f.geometry?.type === 'LineString' && f.geometry.coordinates.length >= 2)
+    if(f.geometry?.type === 'LineString' && f.geometry.coordinates.length >= 2){
       allCoords.push(f.geometry.coordinates);
+      // Store Road_Class alongside coordinates for later inheritance
+      if(f.properties?.Road_Class) allCoords[allCoords.length-1]._roadClass = f.properties.Road_Class;
+    }
   }
 
   // ── Step 2: Find junction points ──
@@ -3017,6 +3159,7 @@ function segRoads(net) {
   // ── Step 3: Split lines at junctions → raw segments ──
   const rawSegs = [];
   allCoords.forEach(coords => {
+    const rc = coords._roadClass || null;
     let cur = [coords[0]];
     for(let i=1; i<coords.length; i++){
       cur.push(coords[i]);
@@ -3024,7 +3167,8 @@ function segRoads(net) {
       const end = i === coords.length-1;
       const jxn = isJunction(k);
       if((end || jxn) && cur.length >= 2){
-        rawSegs.push([...cur]);
+        const seg = [...cur]; seg._roadClass = rc;
+        rawSegs.push(seg);
         if(!end) cur = [coords[i]];
       }
     }
@@ -3047,25 +3191,25 @@ function segRoads(net) {
   rawSegs.forEach((coords, i) => {
     if(merged[i]) return;
     let chain = [...coords];
+    chain._roadClass = coords._roadClass || null;
     merged[i] = 1;
 
-    // Extend forward
     let changed = true;
     while(changed){
       changed = false;
       const tailKey = coordKey(chain[chain.length-1]);
-      const headKey = coordKey(chain[0]);
 
-      // Candidates at tail
       const cands = (epMap[tailKey]||[]).filter(j => !merged[j]);
       if(cands.length === 1){
         const j = cands[0];
         const jc = rawSegs[j];
-        // Orient so it starts at our tail
         const jStart = coordKey(jc[0]) === tailKey;
         const oriented = jStart ? jc : [...jc].reverse();
         if(bearingDiff(lineBearing(chain), lineBearing(oriented)) <= COLLINEAR_THRESH){
           chain = [...chain, ...oriented.slice(1)];
+          // Inherit highest-priority Road_Class (lowest number = highest class)
+          if(jc._roadClass && (!chain._roadClass || jc._roadClass < chain._roadClass))
+            chain._roadClass = jc._roadClass;
           merged[j] = 1;
           changed = true;
           continue;
@@ -3086,13 +3230,14 @@ function segRoads(net) {
     try {
       const line = turf.lineString(coords);
       const len  = turf.length(line, {units:'meters'});
-      if(len < MIN_SEG_LEN) return; // skip micro-stubs
+      if(len < MIN_SEG_LEN) return;
 
       const seg = turf.lineString(coords);
-      // Single midpoint for short segments
       const mid = [(coords[0][0]+coords[coords.length-1][0])/2,
                    (coords[0][1]+coords[coords.length-1][1])/2];
       initSeg(seg, id++, mid, len);
+      // Store road classification for direct use in Safety scoring
+      if(coords._roadClass) seg._roadClass = coords._roadClass;
 
       // For long segments, store extra proximity sample points
       // so POI snapping finds the nearest part of the segment
@@ -3522,19 +3667,15 @@ async function runSSInWorker(graph, n, metRadius, label, pctFrom, pctTo, originI
 }
 
 async function computeSS(sSegs, cSegs, sGraph, cGraph, pctStart, pctEnd, radiusM) {
-  // Runs TWO passes:
-  //   Pass 1 — user-set walking radius (default 1250m): Integration + Choice at walking scale.
-  //            Stored as _li8, _ch. Used for Comfort/Access grading.
-  //   Pass 2 — 30-min radius (2500m): Choice only at vehicular/sub-city scale.
-  //            Stored as _ch30. Used for Safety grading (high Choice30 = high vehicle conflict).
-  //            Integration at 30-min is computed by the same Dijkstra pass but discarded —
-  //            it has no clear interpretation in the safety framework.
-  // Both passes share the same graph and origin set — only the radius changes.
+  // Pass 1 — 15-min walking radius (1250m): Integration + Choice at walking scale → Access layer
+  // Pass 2 — 60-min radius (5000m): Choice only at city scale → Safety layer
+  //           Larger radius means Dijkstra reaches far enough to differentiate arterials
+  //           from local streets across the full surrounding network.
   const R_walk = radiusM || 1250;
-  const R_30   = 2500;               // fixed 30-min radius for safety pass
+  const R_60   = 5000;  // 60-min city-scale radius for Safety
   const n    = sSegs.length;
   const span = pctEnd - pctStart;
-  const midPct = pctStart + span * 0.55; // 55% of progress budget to walking pass
+  const midPct = pctStart + span * 0.45; // 45% to walking pass, 55% to 60-min
 
   function serGraph(graph){ return graph.map(edges => edges.map(({to,ang,met})=>({to,ang,met}))); }
   const sG = serGraph(sGraph);
@@ -3543,18 +3684,18 @@ async function computeSS(sSegs, cSegs, sGraph, cGraph, pctStart, pctEnd, radiusM
   sSegs.forEach((s,i)=>{ if(s._inStudy) coreOrigins.push(i); });
   dbg('SS origins: '+coreOrigins.length+' core of '+n+' total','STAGE');
 
-  // ── Pass 1: walking radius ──
+  // ── Pass 1: 15-min walking radius ──
   setP(pctStart, '15-min walk — Integration + Choice (R'+R_walk+'m)...','nain800');
   const r_walk = await runSSInWorker(sG, n, R_walk,
     '15min Integration+Choice', pctStart, midPct, coreOrigins);
   dbg('Walking-radius SS done','OK');
 
-  const core = sSegs.filter(s=>s._inStudy);
   const norm=(field,raw,segsArr)=>{
     const segsToUse = segsArr || sSegs;
-    const coreVals = segsToUse.filter(s=>s._inStudy).map(s=>s[raw]);
-    const mx=Math.max(1,...coreVals);
-    segsToUse.forEach(s=>{ s[field]=s[raw]/mx; });
+    const coreVals = segsToUse.filter(s=>s._inStudy).map(s=>s[raw]).filter(v=>v>0).sort((a,b)=>a-b);
+    const p95idx = Math.floor(coreVals.length*0.95);
+    const ceil = Math.max(1, coreVals[p95idx] || coreVals[coreVals.length-1] || 1);
+    segsToUse.forEach(s=>{ s[field] = Math.min(1, s[raw]/ceil); });
   };
 
   sSegs.forEach((s,i)=>{
@@ -3565,21 +3706,21 @@ async function computeSS(sSegs, cSegs, sGraph, cGraph, pctStart, pctEnd, radiusM
   norm('_li8','_li8_raw');
   norm('_ch','_ch1200_raw');
 
-  // ── Pass 2: 30-min radius ──
-  setP(midPct, '30-min walk — Integration + Choice (R'+R_30+'m)...','r2500');
-  dbg('Starting 30-min SS pass...','STAGE');
-  const r_30 = await runSSInWorker(sG, n, R_30,
-    '30min Integration+Choice', midPct, pctEnd, coreOrigins);
-  dbg('30-min SS done','OK');
+  // ── Pass 2: 60-min city-scale radius ──
+  setP(midPct, '60-min city-scale Choice (R'+R_60+'m) — identifying arterials...','r2500');
+  dbg('Starting 60-min SS pass...','STAGE');
+  const r_60 = await runSSInWorker(sG, n, R_60,
+    '60min Choice', midPct, pctEnd, coreOrigins);
+  dbg('60-min SS done','OK');
 
   sSegs.forEach((s,i)=>{
-    const nc=r_30.nodeCnt[i], td=r_30.totDepth[i];
-    // Only store Choice — Integration at 30-min is discarded (no role in safety framework)
-    s._ch30_raw   = td>0 ? Math.log(r_30.choice[i]+1)/Math.log(td+3) : 0;
+    const td=r_60.totDepth[i];
+    // Store BOTH raw and normalised — raw is used for city-wide cross-tile normalisation
+    s._ch30_raw = td>0 ? Math.log(r_60.choice[i]+1)/Math.log(td+3) : 0;
   });
-  norm('_ch30','_ch30_raw');
+  norm('_ch30','_ch30_raw');  // per-tile normalise as fallback for single-tile view
 
-  setPhaseCount('r2500', coreOrigins.length+' origins scored');
+  setPhaseCount('r2500', coreOrigins.length+' origins scored at 60-min radius');
 }
 
 /* ════════════════════════════════════════════════
@@ -3829,19 +3970,34 @@ function syncM2Thresholds(){
 // Uses absolute normalised score thresholds (0–1), not percentile rank.
 function scoreM2(segs){
   const t = readM2Thresholds();
-  const ch30Vals = segs.map(s=>s._ch30||0).filter(v=>v>0);
-  const li8Vals  = segs.map(s=>s._li8||0).filter(v=>v>0);
+  const rcCount = segs.filter(s=>s._roadClass && s._roadClass!=='07').length;
+  const rcTotal = segs.filter(s=>s._roadClass).length;
+  dbg('Road_Class coverage: '+rcTotal+' classified ('+rcCount+' non-local) of '+segs.length+' segs','STAGE');
+  const ch30Vals = segs.map(s=>hasMesh?(s._ch30_mesh||0):(s._ch30||0)).filter(v=>v>0);
+  const li8Vals  = segs.map(s=>hasMesh?(s._li8_mesh||0):(s._li8||0)).filter(v=>v>0);
   const pct = (arr,p) => { const s=[...arr].sort((a,b)=>a-b); return s[Math.floor(s.length*p)]||0; };
   if(ch30Vals.length){
-    dbg('M2 Ch30 — p50:'+pct(ch30Vals,.5).toFixed(3)+' p75:'+pct(ch30Vals,.75).toFixed(3)+' p90:'+pct(ch30Vals,.9).toFixed(3)+' max:'+Math.max(...ch30Vals).toFixed(3),'STAGE');
-    dbg('M2 Li8  — p50:'+pct(li8Vals,.5).toFixed(3)+' p75:'+pct(li8Vals,.75).toFixed(3)+' p90:'+pct(li8Vals,.9).toFixed(3)+' max:'+Math.max(...li8Vals).toFixed(3),'STAGE');
+    dbg('M2 Ch30 ('+(hasMesh?'MESH':'tile')+') — p50:'+pct(ch30Vals,.5).toFixed(3)+' p75:'+pct(ch30Vals,.75).toFixed(3)+' p90:'+pct(ch30Vals,.9).toFixed(3)+' max:'+Math.max(...ch30Vals).toFixed(3),'STAGE');
+    dbg('M2 Li8  ('+(hasMesh?'MESH':'tile')+') — p50:'+pct(li8Vals,.5).toFixed(3)+' p75:'+pct(li8Vals,.75).toFixed(3)+' p90:'+pct(li8Vals,.9).toFixed(3),'STAGE');
     dbg('M2 min — safety:'+t.chMin+' access:'+t.liMin+' proxBoost:'+t.proxBoost+'x','STAGE');
   }
   segs.forEach(s=>{
-    s._m2sSc = s._ch30 || 0;
-    const li8 = s._li8 || 0;
-    const px  = Math.min(1, s._pxGrade || 0);
-    s._m2aSc  = li8 * (1 + t.proxBoost * px);
+    const ch30 = s._ch30_mesh !== undefined ? s._ch30_mesh : (s._ch30||0);
+    const li8  = s._li8_mesh  !== undefined ? s._li8_mesh  : (s._li8||0);
+    const px   = Math.min(1, s._pxGrade || 0);
+    const rc   = s._roadClass || null;
+
+    // Safety: Road_Class determines tier when present
+    // Class 07 (local streets) NEVER appear in Safety layer — only named corridors
+    let safetySc;
+    if(rc === '01' || rc === '02')      safetySc = 0.90 + Math.min(0.10, ch30*0.10);
+    else if(rc === '04')                safetySc = 0.65 + Math.min(0.20, ch30*0.20);
+    else if(rc === '05' || rc === '06') safetySc = 0.40 + Math.min(0.20, ch30*0.20);
+    else if(rc === '07' || rc === null) safetySc = 0; // local streets never in Safety
+    else                                safetySc = ch30 * (1 + 0.5 * li8);
+
+    s._m2sSc = safetySc;
+    s._m2aSc = li8 * (1 + t.proxBoost * px);
     s._m2s = s._m2sSc >= t.chMin ? 1 : 0;
     s._m2a = s._m2aSc >= t.liMin ? 1 : 0;
     s._m2j = 0;
@@ -3849,9 +4005,10 @@ function scoreM2(segs){
 }
 
 // Leaflet layers for Method 2
-let m2SafetyLayer=null, m2AccessLayer=null, m2JunctionLayer=null;
+let m2SafetyLayer=null, m2AccessLayer=null, m2JunctionLayer=null, m2BaseLayer=null;
 
 function clearM2Layers(){
+  if(m2BaseLayer)  { map.removeLayer(m2BaseLayer);   m2BaseLayer=null;   }
   if(m2SafetyLayer){ map.removeLayer(m2SafetyLayer); m2SafetyLayer=null; }
   if(m2AccessLayer){ map.removeLayer(m2AccessLayer); m2AccessLayer=null; }
   if(m2JunctionLayer){ map.removeLayer(m2JunctionLayer); m2JunctionLayer=null; }
@@ -3872,8 +4029,14 @@ function buildJunctionPoints(segs, graph){
 }
 
 function renderM2Layers(){
-  if(!segments || !segments.length) return;
+  if(!segments || !segments.length){ dbg('renderM2Layers: no segments','ERR'); return; }
   scoreM2(segments);
+
+  // Debug: log how many segments pass each threshold
+  const t = readM2Thresholds();
+  const safetyCount = segments.filter(s=>(s._m2sSc||0)>=t.chMin).length;
+  const accessCount = segments.filter(s=>(s._m2aSc||0)>=t.liMin).length;
+  dbg('M2 render — safety:'+safetyCount+' access:'+accessCount+' of '+segments.length+' segs (min S:'+t.chMin+' A:'+t.liMin+')','STAGE');
 
   // Also score out-of-area buffer segments that have attractor pull
   const PULL_MIN = 0.05;
@@ -3884,20 +4047,32 @@ function renderM2Layers(){
 
   clearM2Layers();
 
-  const showSafety = (document.getElementById('m2-safety')||{}).checked !== false;
-  const showAccess = (document.getElementById('m2-access')||{}).checked !== false;
-  const t = readM2Thresholds();
+  const safetyEl = document.getElementById('m2-safety');
+  const accessEl = document.getElementById('m2-access');
+  const showSafety = !safetyEl || safetyEl.checked;
+  const showAccess = !accessEl || accessEl.checked;
 
-  const scoreToWeight = (score, maxW) => Math.max(0.5, score * maxW);
+  // Exponential weight mapping — makes top streets dramatically thicker than mid-range
+  // score^1.5 compresses the bottom, amplifies the top
+  const scoreToWeight = (score, maxW) => Math.pow(score, 1.5) * maxW;
 
-  // Safety layer — red, continuous weight from Ch30 score (core segments only)
-  const safetySegs = segments.filter(s => (s._m2sSc||0) >= t.chMin);
+  // ── Base layer — grey background for ALL study segments (priority network context) ──
+  const baseSegs = segments.filter(s => s.geometry);
+  if(baseSegs.length){
+    m2BaseLayer = L.geoJSON({type:'FeatureCollection',features:baseSegs},{
+      style: ()=>({ color:'#888', weight:0.8, opacity:0.35, lineCap:'round', lineJoin:'round' })
+    }).addTo(map);
+  }
+
+  // Safety layer — RED, continuous weight from Ch30 score
+  const safetySegs = segments.filter(s => (s._m2sSc||0) >= t.chMin && s.geometry);
+  dbg('Safety segs with geometry: '+safetySegs.length,'STAGE');
   if(safetySegs.length && showSafety){
-    m2SafetyLayer = L.geoJSON(turf.featureCollection(safetySegs),{
+    m2SafetyLayer = L.geoJSON({type:'FeatureCollection',features:safetySegs},{
       style: f => ({
         color: '#c0392b',
-        weight: scoreToWeight(f._m2sSc||0, 8),
-        opacity: 0.85,
+        weight: scoreToWeight(f._m2sSc||0, 10),
+        opacity: 0.9,
         lineCap: 'round',
         lineJoin: 'round'
       }),
@@ -3905,18 +4080,18 @@ function renderM2Layers(){
     }).addTo(map);
   }
 
-  // Access layer — blue, continuous weight from Integration × proximity boost
-  // Includes both core segments AND out-of-area buffer segments with attractor pull
-  const accessMax = 1 + t.proxBoost;
-  const coreAccessSegs   = segments.filter(s => (s._m2aSc||0) >= t.liMin);
-  const bufferAccessSegs = bufferCorrSegs.filter(s => (s._m2aSc||0) >= t.liMin);
+  // Access layer — BLUE, continuous weight from Integration × proximity boost
+  const accessMax = Math.max(1 + t.proxBoost, 1);
+  const coreAccessSegs   = segments.filter(s => (s._m2aSc||0) >= t.liMin && s.geometry);
+  const bufferAccessSegs = bufferCorrSegs.filter(s => (s._m2aSc||0) >= t.liMin && s.geometry);
   const allAccessSegs    = [...coreAccessSegs, ...bufferAccessSegs];
+  dbg('Access segs with geometry: '+allAccessSegs.length,'STAGE');
   if(allAccessSegs.length && showAccess){
-    m2AccessLayer = L.geoJSON(turf.featureCollection(allAccessSegs),{
+    m2AccessLayer = L.geoJSON({type:'FeatureCollection',features:allAccessSegs},{
       style: f => ({
-        color: '#c0392b',
-        weight: scoreToWeight((f._m2aSc||0) / Math.max(accessMax, 1), 7),
-        opacity: f._inStudy===false ? 0.55 : 0.85,  // buffer segs slightly faded
+        color: '#185FA5',
+        weight: scoreToWeight((f._m2aSc||0) / accessMax, 9),
+        opacity: f._inStudy===false ? 0.55 : 0.9,
         lineCap: 'round',
         lineJoin: 'round'
       }),
@@ -3926,6 +4101,15 @@ function renderM2Layers(){
 
   const legM2 = document.getElementById('leg-m2');
   if(legM2) legM2.style.display = 'block';
+  // Hide uploaded road network layer — grey base layer replaces it
+  if(typeof netLayer!=='undefined' && netLayer && map.hasLayer(netLayer)){
+    map.removeLayer(netLayer);
+    netLayerVisible = false;
+    renderStep1VisToggles();
+  }
+  // Bring analysis layers above base and POI markers
+  if(m2SafetyLayer) m2SafetyLayer.bringToFront();
+  if(m2AccessLayer) m2AccessLayer.bringToFront();
 }
 
 // Store Method 2 scores on a neighbourhood result
@@ -4069,12 +4253,10 @@ let lastGraph=null;
 ════════════════════════════════════════════════ */
 function reGrade(){
   if(!segments.length||!lastGraph)return;
-  const ssW=parseInt(document.getElementById('ssfw').value)/100;
+  const ssW=parseInt((document.getElementById('ssfw')||{value:'70'}).value)/100;
   const proxW=1-ssW;
-  const p1t=parseInt(document.getElementById('p1t').value)/100;
-  const p2t=parseInt(document.getElementById('p2t').value)/100;
-  const p3t=parseInt(document.getElementById('p3t').value)/100;
-  // Sub-weights removed: composite is a plain max of the three equal structural measures.
+  // PWN percentile thresholds removed — using continuous M2 scoring
+  const p1t=0.15, p2t=0.25, p3t=0.30;
   const _comp=readComposite(); const wN=_comp.wN;
   // Recompute proximity with current attVis
   const attConfigs=atts.map((a,i)=>({...a,vis:attVis[i]!==false}));
@@ -4199,25 +4381,41 @@ function proxColor(val) {
 //  (swap for custom icons later via the `icon` field).
 // ════════════════════════════════════════════════
 function buildPOIMarkers(filterToBuffer){
-  // Clear existing
   Object.values(poiMarkerLayers).forEach(L=>{ if(L) map.removeLayer(L); });
   poiMarkerLayers={};
-  // If filtering to buffer, prepare the polygon for point-in-polygon tests
-  const bufPoly = (filterToBuffer && window._bufferPolygon) ? window._bufferPolygon : null;
-  const inBuffer = (f)=>{
-    if(!bufPoly) return true;
+
+  // Filter to STUDY BOUNDARY only — not the context buffer.
+  // The buffer exists for SS computation only; POIs are only relevant within the study area.
+  let studyPoly = null;
+  if(filterToBuffer){
     try{
-      let pt = f;
-      if(f.geometry && f.geometry.type!=='Point'){
-        pt = turf.centroid(f);
+      if(typeof neighbourhoods!=='undefined' && neighbourhoods.length>0){
+        // Mesh: union of all neighbourhood polygons
+        const polys = neighbourhoods.map(nb=>{
+          const ring=[...nb.ring, nb.ring[0]];
+          return turf.polygon([ring]);
+        });
+        studyPoly = polys.length===1 ? polys[0] :
+          polys.reduce((acc,p)=>{ try{return turf.union(acc,p);}catch(e){return acc;} });
+      } else if(bounds.study && bounds.study.length>=3){
+        // Single polygon
+        const ring=[...bounds.study, bounds.study[0]];
+        studyPoly = turf.polygon([ring]);
       }
-      return turf.booleanPointInPolygon(pt, bufPoly);
+    }catch(e){ studyPoly=null; }
+  }
+
+  const inStudy = (f)=>{
+    if(!studyPoly) return true;
+    try{
+      const pt = (f.geometry && f.geometry.type==='Point') ? f : turf.centroid(f);
+      return turf.booleanPointInPolygon(pt, studyPoly);
     }catch(e){ return true; }
   };
   atts.forEach((a,i)=>{
     if(!a.data || !a.data.features) return;
     // Filter features to buffer zone if requested
-    const feats = bufPoly ? a.data.features.filter(inBuffer) : a.data.features;
+    const feats = studyPoly ? a.data.features.filter(inStudy) : a.data.features;
     const dataToShow = { type:'FeatureCollection', features:feats };
     const col = a.color || '#c8a96e';
     // Clean Google-Maps-style teardrop pin (small, simple, recognisable)
@@ -4489,9 +4687,9 @@ async function runAnimatedReveal(segs, sGraph, attConfigs, ssW, proxW, p1t, p2t,
     s => proxColor(s._px), s => 1.5 + s._px * 4);
   await sleep(HOLD);
 
-  // Phase 9 — Final PWN grade (fade in)
+  // Phase 9 — Final M2 result (Safety + Access layers)
   hidePhaseLabel();
-  renderSegs(segs);
+  renderM2Layers();
   await sleep(400);
 }
 
@@ -4565,33 +4763,17 @@ function showInfo(s){
 }
 
 function updateStats(segs){
-  document.getElementById('s1').textContent=segs.filter(s=>s._pwn==='pwn1').length;
-  document.getElementById('s2').textContent=segs.filter(s=>s._pwn==='pwn2').length;
-  document.getElementById('s3').textContent=segs.filter(s=>s._pwn==='pwn3').length;
-  document.getElementById('s4').textContent=segs.filter(s=>s._pwn==='pwn4').length;
-  document.getElementById('st').textContent=segs.length;
+  // Count Safety and Access corridor segments
+  const safetySegs = segs.filter(s=>(s._m2sSc||0) > 0);
+  const accessSegs = segs.filter(s=>(s._m2aSc||0) > 0);
+  const bothSegs   = segs.filter(s=>(s._m2sSc||0) > 0 && (s._m2aSc||0) > 0);
+  document.getElementById('s1').textContent = safetySegs.length;
+  document.getElementById('s2').textContent = accessSegs.length;
+  document.getElementById('s3').textContent = bothSegs.length;
+  document.getElementById('s4').textContent = segs.length;
+  document.getElementById('st').textContent = segs.length;
   document.getElementById('stats-footer').style.display='block';
   document.getElementById('legend').style.display='block';
-
-  // Per-tier share (%) and total length (m) for the on-map legend.
-  // Length is measured per segment with turf; only graded study-core segments count.
-  const tiers=['pwn1','pwn2','pwn3','pwn4'];
-  const lenByTier={pwn1:0,pwn2:0,pwn3:0,pwn4:0};
-  let totalLen=0, totalCount=segs.length||1;
-  segs.forEach(s=>{
-    let L=0;
-    try{ L = turf.length(s, {units:'kilometers'})*1000; }catch(e){ L=0; }
-    if(lenByTier[s._pwn]!==undefined) lenByTier[s._pwn]+=L;
-    totalLen+=L;
-  });
-  const fmtLen = m => m>=1000 ? (m/1000).toFixed(m>=10000?0:1)+' km' : Math.round(m)+' m';
-  const denom = totalLen||1;
-  tiers.forEach(t=>{
-    const el=document.getElementById('lst-'+t); if(!el) return;
-    const len = lenByTier[t]||0;
-    const pct = Math.round(100*len/denom); // share of total network LENGTH (consistent with metres)
-    el.textContent = pct+'% · '+fmtLen(len);
-  });
 }
 
 /* ════════════════════════════════════════════════
@@ -4764,9 +4946,7 @@ function toggleAtt(i){
   const tog=document.getElementById('tog-att-'+i);
   if(tog) tog.classList.toggle('on',attVis[i]);
   if(attLayers[i]){ attVis[i]?map.addLayer(attLayers[i]):map.removeLayer(attLayers[i]); }
-  // Also show/hide POI markers if they exist separately
   if(poiMarkerLayers[i]){ attVis[i]?map.addLayer(poiMarkerLayers[i]):map.removeLayer(poiMarkerLayers[i]); }
-  renderStep1VisToggles(); // refresh Step 1 checklist
 }
 function toggleBase(){
   baseVis=!baseVis;
@@ -4826,6 +5006,7 @@ function toggleCorridors(){
    MAIN ANALYSIS
 ════════════════════════════════════════════════ */
 async function runAnalysis(_fromBatch){
+  dbg('runAnalysis called — fromBatch:'+!!_fromBatch+' activeCity:'+activeCity+' hasNetwork:'+(typeof cities!=='undefined'&&activeCity!=null&&cities[activeCity]?!!cities[activeCity].network:false)+' bounds.study:'+!!bounds.study+' nbhds:'+(typeof neighbourhoods!=='undefined'?neighbourhoods.length:0),'STAGE');
   if(activeCity===null){showToast('Select a city first');return;}
   const city=cities[activeCity];
   if(!city.network){showToast('Upload a street network first');return;}
@@ -4836,12 +5017,10 @@ async function runAnalysis(_fromBatch){
     return;
   }
 
-  const ssW=parseInt(document.getElementById('ssfw').value)/100;
+  const ssW=parseInt((document.getElementById('ssfw')||{value:'70'}).value)/100;
   const proxW=1-ssW;
-  const p1t=parseInt(document.getElementById('p1t').value)/100;
-  const p2t=parseInt(document.getElementById('p2t').value)/100;
-  const p3t=parseInt(document.getElementById('p3t').value)/100;
-  // Sub-weights removed: composite is a plain max of the three equal structural measures.
+  // PWN percentile thresholds removed — using continuous M2 scoring
+  const p1t=0.15, p2t=0.25, p3t=0.30;
   const _comp=readComposite(); const wN=_comp.wN;
   const ssRadius = parseInt((document.getElementById('ss-radius')||{}).value || '1250');
 
@@ -4858,8 +5037,9 @@ async function runAnalysis(_fromBatch){
   }
 
   clearAreaWarning();
-  // auto-clear debug log for the new run (panel stays closed unless user opens it)
+  // auto-clear debug log and open panel for the run
   clearDebugLog();
+  document.getElementById('debug-panel').style.display='flex';
   dbg('━━━ ANALYSIS START ━━━','STAGE');
   document.getElementById('prog-overlay').style.display='flex';
   startAnalysisClock();
@@ -5049,14 +5229,18 @@ async function runAnalysis(_fromBatch){
   allSegments=allSegs;
   const sSegs=coreSegs;
 
-  // Hide progress overlay — animated reveal takes over
-  setP(99,'Animating results...','reveal');
-  await sleep(200);
+  // Hide progress overlay
+  setP(99,'Scoring complete...','reveal');
+  await sleep(100);
   document.getElementById('prog-overlay').style.display='none';
 
-  // Animated layer-by-layer reveal
-  await runAnimatedReveal(sSegs, sGraph, attConfigs, ssW, proxW, p1t, p2t, p3t, wN);
+  // Only run animated reveal for single-polygon analysis, not batch
+  if(!_fromBatch){
+    await runAnimatedReveal(sSegs, sGraph, attConfigs, ssW, proxW, p1t, p2t, p3t, wN);
+  }
 
+  // Render M2 layers (always)
+  renderM2Layers();
   updateStats(sSegs);
   // Reveal Step 5 (close network gaps) now that an analysis exists
   window._analysed=true;
@@ -5083,6 +5267,10 @@ async function runAnalysis(_fromBatch){
   const s5=document.getElementById('step-5'); if(s5){ s5.classList.remove('locked'); s5.classList.add('active'); }
   const s6=document.getElementById('step-6'); if(s6){ s6.classList.remove('locked'); s6.classList.add('active'); }
   const ms=document.getElementById('mode-switcher'); if(ms) ms.style.display='block';
+  const m2tog=document.getElementById('m2-layer-toggles'); if(m2tog) m2tog.style.display='block';
+  // Force Safety and Access checkboxes to checked
+  const safetyChk=document.getElementById('m2-safety'); if(safetyChk) safetyChk.checked=true;
+  const accessChk=document.getElementById('m2-access'); if(accessChk) accessChk.checked=true;
   if(typeof updateExportPanel==='function') updateExportPanel();
   const st5=document.getElementById('status-5'); if(st5){ st5.textContent='Ready — click to identify gap closers'; st5.className='step-status pending'; }
   // Reset brush and gap-closer state for the new result
