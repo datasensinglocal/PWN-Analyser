@@ -329,7 +329,7 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
     <div class="sb-eyebrow">Urban Mobility Analysis</div>
     <div class="sb-title">PWN Analyser</div>
     <div class="sb-sub">Priority Walking Network · Space Syntax + Trip Attractors</div>
-    <div class="sb-version" id="sb-version">v3.52 · deferred render · network shows only on boundary draw · 2026-09-22</div>
+    <div class="sb-version" id="sb-version">v3.52 · full audit · regex KML · deferred render · Road_Class safety · 2026-09-22</div>
   </div>
   <div class="sb-tabs">
     <button class="tab active" onclick="switchTab('data')">Data</button>
@@ -976,35 +976,69 @@ function toggleSuggestModule(){
    KML PARSER
 ════════════════════════════════════════════════ */
 function kmlToGeoJSON(txt){
-  const parser=new DOMParser(),kml=parser.parseFromString(txt,'text/xml');
-  const features=[];
+  // Fast regex-based parser — avoids DOMParser which blocks the main thread
+  // on large KML files (100k+ features). Reads coordinate strings directly.
+  const features = [];
   function parseCoords(str){
     return str.trim().split(/\s+/).map(p=>{
       const pts=p.split(',');
-      return[parseFloat(pts[0]),parseFloat(pts[1])];
+      return [parseFloat(pts[0]),parseFloat(pts[1])];
     }).filter(c=>!isNaN(c[0])&&!isNaN(c[1]));
   }
-  kml.querySelectorAll('Placemark').forEach(pm=>{
-    const props={name:(pm.querySelector('name')||{}).textContent||''};
-    // Capture all SimpleData fields (Road_Class, Road_Type etc.)
-    pm.querySelectorAll('SimpleData').forEach(sd=>{
-      const k=sd.getAttribute('name');
-      if(k) props[k]=sd.textContent.trim();
-    });
+  function getTag(str,tag){
+    const re=new RegExp('<'+tag+'[^>]*>([\\s\\S]*?)<\/'+tag+'>','i');
+    const m=str.match(re); return m?m[1]:null;
+  }
+  function getAllTags(str,tag){
+    const re=new RegExp('<'+tag+'[^>]*>([\\s\\S]*?)<\/'+tag+'>','gi');
+    const results=[]; let m;
+    while((m=re.exec(str))!==null) results.push(m[1]);
+    return results;
+  }
+  const placemarkRe=/<Placemark[\s\S]*?<\/Placemark>/gi;
+  let m;
+  while((m=placemarkRe.exec(txt))!==null){
+    const pm=m[0];
+    const props={};
+    const nameM=pm.match(/<name[^>]*>([\s\S]*?)<\/name>/i);
+    if(nameM) props.name=nameM[1].replace(/<[^>]+>/g,'').trim();
+    const sdRe=/<SimpleData name="([^"]+)"[^>]*>([\s\S]*?)<\/SimpleData>/gi;
+    let sd;
+    while((sd=sdRe.exec(pm))!==null) props[sd[1]]=sd[2].trim();
     const addFeat=(geom)=>features.push({type:'Feature',properties:props,geometry:geom});
-    const pt=pm.querySelector('Point coordinates');
-    if(pt){const c=parseCoords(pt.textContent);if(c.length)addFeat({type:'Point',coordinates:c[0]});}
-    const ln=pm.querySelector('LineString coordinates');
-    if(ln){const c=parseCoords(ln.textContent);if(c.length>=2)addFeat({type:'LineString',coordinates:c});}
-    const mg=pm.querySelector('MultiGeometry');
-    if(mg){
-      mg.querySelectorAll('LineString coordinates').forEach(ls=>{const c=parseCoords(ls.textContent);if(c.length>=2)addFeat({type:'LineString',coordinates:c});});
-      mg.querySelectorAll('Point coordinates').forEach(p=>{const c=parseCoords(p.textContent);if(c.length)addFeat({type:'Point',coordinates:c[0]});});
+    // LineString (not inside MultiGeometry)
+    const pmNoMG=pm.replace(/<MultiGeometry[\s\S]*?<\/MultiGeometry>/gi,'');
+    if(pmNoMG.indexOf('<LineString')>-1){
+      const c=parseCoords(getTag(pmNoMG,'coordinates')||'');
+      if(c.length>=2) addFeat({type:'LineString',coordinates:c});
     }
-    const poly=pm.querySelector('Polygon outerBoundaryIs LinearRing coordinates');
-    if(poly){const c=parseCoords(poly.textContent);if(c.length>=3){if(c[0][0]!==c[c.length-1][0])c.push(c[0]);addFeat({type:'Polygon',coordinates:[c]});}}
-  });
-  return{type:'FeatureCollection',features};
+    // MultiGeometry
+    const mgM=pm.match(/<MultiGeometry[\s\S]*?<\/MultiGeometry>/i);
+    if(mgM){
+      getAllTags(mgM[0],'coordinates').forEach(cs=>{
+        const c=parseCoords(cs);
+        if(c.length>=2) addFeat({type:'LineString',coordinates:c});
+        else if(c.length===1) addFeat({type:'Point',coordinates:c[0]});
+      });
+    }
+    // Point only
+    if(!mgM && pmNoMG.indexOf('<Point')>-1 && pmNoMG.indexOf('<LineString')<0){
+      const c=parseCoords(getTag(pmNoMG,'coordinates')||'');
+      if(c.length) addFeat({type:'Point',coordinates:c[0]});
+    }
+    // Polygon
+    if(pm.indexOf('<Polygon')>-1){
+      const outerM=pm.match(/<outerBoundaryIs[\s\S]*?<\/outerBoundaryIs>/i);
+      if(outerM){
+        const c=parseCoords(getTag(outerM[0],'coordinates')||'');
+        if(c.length>=3){
+          if(c[0][0]!==c[c.length-1][0]) c.push(c[0]);
+          addFeat({type:'Polygon',coordinates:[c]});
+        }
+      }
+    }
+  }
+  return {type:'FeatureCollection',features};
 }
 function parseFile(file,cb){
   const r=new FileReader();
@@ -1012,7 +1046,7 @@ function parseFile(file,cb){
     try{
       const gj=file.name.toLowerCase().endsWith('.kml')?kmlToGeoJSON(e.target.result):JSON.parse(e.target.result);
       cb(null,gj,file.name);
-    }catch(ex){cb('Error reading file — check it is valid GeoJSON or KML');}
+    }catch(ex){cb('Error reading file — check it is valid GeoJSON or KML: '+ex.message);}
   };
   r.readAsText(file);
 }
@@ -1539,7 +1573,7 @@ async function analyseAllNeighbourhoods(){
       try{
         const ring=[...nb.ring,nb.ring[0]];
         const poly=turf.polygon([ring]);
-        const buf=turf.buffer(poly,5.0,{units:'kilometers'});
+        const buf=turf.buffer(poly,10.0,{units:'kilometers'});
         if(buf&&buf.geometry){
           const simp=turf.simplify(buf,{tolerance:0.001,highQuality:false});
           const coords=simp.geometry.type==='Polygon'?simp.geometry.coordinates[0]:simp.geometry.coordinates[0][0];
@@ -4771,28 +4805,39 @@ function renderSegs(segs){
 }
 
 function showInfo(s){
-  const PC={pwn1:'#D0021B',pwn2:'#E87722',pwn3:'#F5C518',pwn4:'#1565C0'};
-  const PL={pwn1:'PWN 1 — Critical Backbone',pwn2:'PWN 2 — Secondary Corridor',pwn3:'PWN 3 — Local Feeder',pwn4:'PWN 4 — Spatial Enclave'};
-  document.getElementById('info-id').textContent='Segment #'+s._id+(s._gated?' · isolated':'')+(s._connector?' · connector':'');
-  document.getElementById('info-grade').textContent=PL[s._pwn]||'—';
-  document.getElementById('info-grade').style.color=PC[s._pwn]||'#888';
-  document.getElementById('ibar-fill').style.width=Math.round((s._final||0)*100)+'%';
-  document.getElementById('iv-fin').textContent=(s._final||0).toFixed(3);
-  document.getElementById('iv-ss').textContent=(s._ss||0).toFixed(3);
-  document.getElementById('iv-co').textContent=(s._coN||0).toFixed(3)+' ('+s._co+')';
-  document.getElementById('iv-l8').textContent=(s._li8||0).toFixed(4);
-  document.getElementById('iv-ch').textContent=(s._ch||0).toFixed(4);
-  document.getElementById('iv-px').textContent=(s._px||0).toFixed(3)+' (raw:'+s._pxRaw.toFixed(2)+')';
+  const RC_LABEL = {'01':'Arterial (Class 01)','02':'Arterial (Class 02)',
+    '04':'Sub-arterial (Class 04)','05':'Collector (Class 05)',
+    '06':'Collector (Class 06)','07':'Local street (Class 07)'};
+  const rc = s._roadClass || null;
+  const safetyScore = (s._m2sSc||0).toFixed(3);
+  const accessScore = (s._m2aSc||0).toFixed(3);
+  const ch30mesh = s._ch30_mesh !== undefined ? s._ch30_mesh.toFixed(3) : (s._ch30||0).toFixed(3);
+  const li8mesh  = s._li8_mesh  !== undefined ? s._li8_mesh.toFixed(3)  : (s._li8||0).toFixed(3);
+
+  document.getElementById('info-id').textContent =
+    'Segment #'+s._id+(s._gated?' · isolated':'')+(s._connector?' · connector':'');
+  document.getElementById('info-grade').textContent =
+    (rc ? RC_LABEL[rc]||('Class '+rc) : 'Local / unclassified') +
+    ' · Safety:'+safetyScore+' Access:'+accessScore;
+  document.getElementById('info-grade').style.color =
+    (s._m2sSc||0)>=0.65 ? '#c0392b' : (s._m2aSc||0)>0 ? '#185FA5' : '#888';
+  document.getElementById('ibar-fill').style.width=Math.round(Math.max(s._m2sSc||0, s._m2aSc||0)*100)+'%';
+  document.getElementById('iv-fin').textContent = safetyScore;
+  document.getElementById('iv-ss').textContent  = accessScore;
+  document.getElementById('iv-co').textContent  = (s._coN||0).toFixed(3)+' ('+s._co+')';
+  document.getElementById('iv-l8').textContent  = li8mesh+' (mesh)';
+  document.getElementById('iv-ch').textContent  = ch30mesh+' (mesh 60-min)';
+  document.getElementById('iv-px').textContent  = (s._px||0).toFixed(3)+' (raw:'+(s._pxRaw||0).toFixed(2)+')';
   document.getElementById('iv-px-det').innerHTML=Object.entries(s._pxDet||{}).map(([k,v])=>`
     <div class="ir"><span class="il" style="padding-left:8px">↳ ${k}</span><span class="iv">${v.toFixed(2)}</span></div>`).join('');
   document.getElementById('info-panel').style.display='block';
 }
 
 function updateStats(segs){
-  // Count Safety and Access corridor segments
-  const safetySegs = segs.filter(s=>(s._m2sSc||0) > 0);
-  const accessSegs = segs.filter(s=>(s._m2aSc||0) > 0);
-  const bothSegs   = segs.filter(s=>(s._m2sSc||0) > 0 && (s._m2aSc||0) > 0);
+  const t = readM2Thresholds();
+  const safetySegs = segs.filter(s=>(s._m2sSc||0) >= t.chMin);
+  const accessSegs = segs.filter(s=>(s._m2aSc||0) >= t.liMin);
+  const bothSegs   = segs.filter(s=>(s._m2sSc||0) >= t.chMin && (s._m2aSc||0) >= t.liMin);
   document.getElementById('s1').textContent = safetySegs.length;
   document.getElementById('s2').textContent = accessSegs.length;
   document.getElementById('s3').textContent = bothSegs.length;
