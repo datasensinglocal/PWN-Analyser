@@ -329,7 +329,7 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
     <div class="sb-eyebrow">Urban Mobility Analysis</div>
     <div class="sb-title">PWN Analyser</div>
     <div class="sb-sub">Priority Walking Network · Space Syntax + Trip Attractors</div>
-    <div class="sb-version" id="sb-version">v3.53 · fix hasMesh crash · Road_Class through cleanNetwork · 2026-09-22</div>
+    <div class="sb-version" id="sb-version">v3.54 · buffer cap 4000 · auto ctx · RC through cleanNetwork · 2026-09-22</div>
   </div>
   <div class="sb-tabs">
     <button class="tab active" onclick="switchTab('data')">Data</button>
@@ -455,7 +455,7 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
           <div class="step-num"><span>3</span></div>
           <div class="step-body">
             <div class="step-title-row"><span class="step-title">Set global context <span style="font-size:9px;color:#666;font-weight:400">· optional</span></span><span class="step-info-ico" id="step-info-3" onclick="toggleStepInfo(3)" title="What to do">i</span></div>
-            <div class="step-desc" id="step-desc-3">Generates a ≈10 km buffer around the study area — the 60-min Choice pass (5000m radius) needs at least 10km of surrounding network to find genuine through-routes and differentiate arterials from local streets.</div>
+            <div class="step-desc" id="step-desc-3">Auto-generates a 10km buffer around each tile — gives the 60-min Choice pass enough network to reach its full radius. Runs automatically when you press Run. Click here to preview the buffers before running.</div>
             <!-- Context controls -->
             <div class="boundary-group" id="ctx-group" style="margin-top:8px">
               <div style="display:flex;gap:5px;align-items:stretch">
@@ -1553,6 +1553,14 @@ async function analyseAllNeighbourhoods(){
   const todo = neighbourhoods.filter(nb=>nb.status!=='analysed');
   dbg('todo:'+todo.length+' pending tiles','STAGE');
   if(!todo.length){ showToast('All neighbourhoods already analysed'); return; }
+
+  // Auto-generate context buffers if Step 3 was skipped
+  const needsCtx = neighbourhoods.some(nb=>!nb.ctxRing || nb.ctxRing.length<3);
+  if(needsCtx){
+    dbg('Auto-generating 10km context buffers for all tiles...','STAGE');
+    autoGenerateContext();
+    await sleep(300); // let buffers compute and render
+  }
 
   batchRunning=true; batchStop=false;
   showBatchBar(true); setBatchProgress(0, todo.length, null);
@@ -5175,10 +5183,10 @@ async function runAnalysis(_fromBatch){
       if(corePoly){ try{ inside=turf.booleanPointInPolygon(turf.point(s._mid),corePoly); }catch(e){} }
       if(!inside){ s._inStudy=false; s._isBuffer=true; bufferSegs.push(s); }
     });
-    // Hard cap: if the buffer is huge (dense area + large radius), keep only the
-    // buffer segments NEAREST the core. The far buffer roads barely affect core
-    // SS scores (radius-limited) and only matter for attractor reach.
-    const BUFFER_CAP = 1500;
+    // Hard cap: keep buffer segments nearest the core
+    // With 60-min SS (5000m radius) we need enough network to reach that far.
+    // 4000 segments at 400m spacing covers roughly a 5-6km radius — adequate.
+    const BUFFER_CAP = 4000;
     if(bufferSegs.length > BUFFER_CAP){
       // Distance of each buffer seg midpoint to core centroid
       let cx=0,cy=0; coreSegsAll.forEach(s=>{cx+=s._mid[0];cy+=s._mid[1];});
