@@ -329,7 +329,7 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
     <div class="sb-eyebrow">Urban Mobility Analysis</div>
     <div class="sb-title">PWN Analyser</div>
     <div class="sb-sub">Priority Walking Network · Space Syntax + Trip Attractors</div>
-    <div class="sb-version" id="sb-version">v3.51 · cdnjs · Class07 excluded from Safety · 2026-06-28</div>
+    <div class="sb-version" id="sb-version">v3.52 · downsample network display · no freeze on 101k features · 2026-09-22</div>
   </div>
   <div class="sb-tabs">
     <button class="tab active" onclick="switchTab('data')">Data</button>
@@ -671,8 +671,8 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
   <div id="map"></div>
   <div class="map-controls">
     <div class="basemap-switcher">
-      <button class="basemap-btn active-base" data-bm="osm" onclick="switchBaseMap('osm')" title="OpenStreetMap">OSM</button>
-      <button class="basemap-btn" data-bm="voyager" onclick="switchBaseMap('voyager')" title="Carto Voyager">Voyager</button>
+      <button class="basemap-btn" data-bm="osm" onclick="switchBaseMap('osm')" title="OpenStreetMap">OSM</button>
+      <button class="basemap-btn active-base" data-bm="voyager" onclick="switchBaseMap('voyager')" title="Carto Voyager">Voyager</button>
       <button class="basemap-btn" data-bm="carto_light" onclick="switchBaseMap('carto_light')" title="Carto Light">Light</button>
       <button class="basemap-btn" data-bm="carto_dark" onclick="switchBaseMap('carto_dark')" title="Carto Dark">Dark</button>
     </div>
@@ -911,14 +911,15 @@ window.addEventListener('unhandledrejection', ev=>{
 
 const map=L.map('map',{zoomControl:false,preferCanvas:true}).setView([12.97,77.59],13);
 L.control.zoom({position:'bottomleft'}).addTo(map);
-// Base map selector — OSM default, switchable
+// Base map selector — Voyager (CartoDB) default — works from file:// without 403
+// OSM tiles block requests from local files; CartoDB tiles do not.
 const baseMaps = {
   osm: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
     attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
     maxZoom:19
   }),
   voyager: L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',{
-    attribution:'&copy; OpenStreetMap &copy; CARTO',maxZoom:19
+    attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/">CARTO</a>',maxZoom:19
   }),
   carto_light: L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',{
     attribution:'&copy; OpenStreetMap &copy; CARTO',maxZoom:19
@@ -927,7 +928,7 @@ const baseMaps = {
     attribution:'&copy; OpenStreetMap &copy; CARTO',maxZoom:19
   })
 };
-let activeBase = baseMaps.osm;
+let activeBase = baseMaps.voyager;  // CartoDB works from file://
 activeBase.addTo(map);
 
 function switchBaseMap(name) {
@@ -2183,11 +2184,18 @@ function loadCityFolder(input){
     const nz=document.getElementById('net-zone'); if(nz) nz.classList.add('loaded');
     const t=document.getElementById('net-t'); if(t){ t.textContent='✓ '+ct+' features loaded'; t.className='uz-t ok'; }
     const ns=document.getElementById('net-s'); if(ns) ns.textContent=netFile.name;
-    if(netLayer)map.removeLayer(netLayer);
-    netLayer=L.geoJSON(gj,{style:{color:'#aaaaaa',weight:0.8,opacity:0.5}}).addTo(map);
-    try{map.fitBounds(netLayer.getBounds(),{padding:[30,30]});}catch(ex){}
+    // Render a downsampled visual layer — only every Nth feature to avoid freezing
+    // the browser with 101k SVG paths. Full network is kept in cities[ci].network for analysis.
+    if(netLayer) map.removeLayer(netLayer);
+    const allFeats = gj.features || [];
+    const DISPLAY_MAX = 8000;
+    const step = allFeats.length > DISPLAY_MAX ? Math.ceil(allFeats.length / DISPLAY_MAX) : 1;
+    const displayFeats = step > 1 ? allFeats.filter((_,i) => i % step === 0) : allFeats;
+    const displayGJ = { type:'FeatureCollection', features: displayFeats };
+    netLayer = L.geoJSON(displayGJ, {style:{color:'#888',weight:0.7,opacity:0.4}}).addTo(map);
+    try{ map.fitBounds(netLayer.getBounds(),{padding:[30,30]}); }catch(ex){}
     renderCities();
-    dbg('Network loaded: '+ct+' features','OK');
+    dbg('Network loaded: '+ct+' features (displaying '+displayFeats.length+')','OK');
     done();
   });
 
@@ -2656,7 +2664,11 @@ function loadNetwork(input){
     const t=document.getElementById('net-t');t.textContent='✓ '+ct+' features loaded';t.className='uz-t ok';
     document.getElementById('net-s').textContent=fname;
     if(netLayer)map.removeLayer(netLayer);
-    netLayer=L.geoJSON(gj,{style:{color:'#aaaaaa',weight:0.8,opacity:0.5}}).addTo(map);
+
+    const _af=(gj.features||[]), _step=_af.length>8000?Math.ceil(_af.length/8000):1;
+    const _df=_step>1?_af.filter((_,i)=>i%_step===0):_af;
+    if(netLayer)map.removeLayer(netLayer);
+    netLayer=L.geoJSON({type:'FeatureCollection',features:_df},{style:{color:'#888',weight:0.7,opacity:0.4}}).addTo(map);
     netLayerVisible = true;
     try{map.fitBounds(netLayer.getBounds(),{padding:[30,30]});}catch(ex){}
     updateSteps();
@@ -5401,7 +5413,11 @@ function loadSession(){
 
   // Restore network layer
   if(session.network){
-    netLayer = L.geoJSON(session.network,{style:{color:'#aaaaaa',weight:0.8,opacity:0.5}}).addTo(map);
+
+    const _af=(session.network.features||[]), _step=_af.length>8000?Math.ceil(_af.length/8000):1;
+    const _df=_step>1?_af.filter((_,i)=>i%_step===0):_af;
+    if(netLayer)map.removeLayer(netLayer);
+    netLayer=L.geoJSON({type:'FeatureCollection',features:_df},{style:{color:'#888',weight:0.7,opacity:0.4}}).addTo(map);
     try{ map.fitBounds(netLayer.getBounds(),{padding:[30,30]}); }catch(ex){}
     const ct = session.network.features ? session.network.features.length : 0;
     document.getElementById('net-zone').classList.add('loaded');
