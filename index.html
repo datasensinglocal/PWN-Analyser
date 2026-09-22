@@ -329,7 +329,7 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
     <div class="sb-eyebrow">Urban Mobility Analysis</div>
     <div class="sb-title">PWN Analyser</div>
     <div class="sb-sub">Priority Walking Network · Space Syntax + Trip Attractors</div>
-    <div class="sb-version" id="sb-version">v3.52 · full audit · regex KML · deferred render · Road_Class safety · 2026-09-22</div>
+    <div class="sb-version" id="sb-version">v3.53 · fix hasMesh crash · Road_Class through cleanNetwork · 2026-09-22</div>
   </div>
   <div class="sb-tabs">
     <button class="tab active" onclick="switchTab('data')">Data</button>
@@ -2886,6 +2886,7 @@ function cleanNetwork(net) {
   // ── Pass 1: Explode, snap, dedupe, remove slivers ──
   for (const f of (net.features||[])) {
     if (!f.geometry) continue;
+    const rc = f.properties?.Road_Class || null;  // preserve Road_Class
     const coordArrays = f.geometry.type==='MultiLineString' ? f.geometry.coordinates
       : f.geometry.type==='LineString' ? [f.geometry.coordinates] : [];
 
@@ -2909,6 +2910,7 @@ function cleanNetwork(net) {
       const key = lineKey(deduped);
       if (seen.has(key)) continue;
       seen.add(key);
+      if(rc) deduped._roadClass = rc;  // tag with Road_Class
       rawLines.push(deduped);
     }
   }
@@ -2943,10 +2945,9 @@ function cleanNetwork(net) {
   // Apply consolidation: snap endpoints to cluster centroid
   const consolidated = rawLines.map(coords => {
     const result = [...coords];
-    // Snap start
     result[0] = nodeCentroid[cKey(coords[0])] || coords[0];
-    // Snap end
     result[result.length-1] = nodeCentroid[cKey(coords[coords.length-1])] || coords[coords.length-1];
+    if(coords._roadClass) result._roadClass = coords._roadClass;  // carry through
     return result;
   });
 
@@ -2955,14 +2956,22 @@ function cleanNetwork(net) {
   const seen2 = new Set();
   consolidated.forEach(coords => {
     const key = lineKey(coords);
-    if (!seen2.has(key)) { seen2.add(key); finalLines.push(coords); }
+    if (!seen2.has(key)){
+      seen2.add(key);
+      if(coords._roadClass) coords._roadClass = coords._roadClass; // already on array
+      finalLines.push(coords);
+    }
   });
 
   // ── Pass 4: Node dangling endpoints onto nearby segments (T-junctions & near-miss gaps) ──
   // Safety guard: only node bounded networks. The clipped core/buffer are small; if somehow
   // handed a huge network, skip noding rather than risk a browser hang.
   if(finalLines.length > 6000){
-    const result0 = turf.featureCollection(finalLines.map(c => turf.lineString(c)));
+    const result0 = turf.featureCollection(finalLines.map(c => {
+      const f = turf.lineString(c);
+      if(c._roadClass) f.properties.Road_Class = c._roadClass;
+      return f;
+    }));
     result0._cleanStats = { before:net.features.length, after:finalLines.length,
       reduction:Math.round((1-finalLines.length/Math.max(1,net.features.length))*100), noded:0 };
     console.log('Network cleaned (noding skipped — '+finalLines.length+' lines > 6000 guard)');
@@ -3089,18 +3098,25 @@ function cleanNetwork(net) {
     });
     // Now split work into pieces at every split point
     const splitKeys = new Set(sp.map(p=>p[0]+','+p[1]));
+    const parentRC = coords._roadClass || null;
     let cur=[work[0]];
     for(let i=1;i<work.length;i++){
       cur.push(work[i]);
       if(splitKeys.has(work[i][0]+','+work[i][1]) && i<work.length-1){
+        if(parentRC) cur._roadClass = parentRC;
         out.push(cur); cur=[work[i]];
       }
     }
+    if(parentRC) cur._roadClass = parentRC;
     out.push(cur);
   });
   nodedLines = out.filter(c=>c.length>=2);
 
-  const result = turf.featureCollection(nodedLines.map(c => turf.lineString(c)));
+  const result = turf.featureCollection(nodedLines.map(c => {
+    const f = turf.lineString(c);
+    if(c._roadClass) f.properties.Road_Class = c._roadClass;
+    return f;
+  }));
   const reduction = Math.round((1-nodedLines.length/Math.max(1,net.features.length))*100);
   const cleanStats = {
     before: net.features.length,
@@ -4033,6 +4049,8 @@ function scoreM2(segs){
   const rcCount = segs.filter(s=>s._roadClass && s._roadClass!=='07').length;
   const rcTotal = segs.filter(s=>s._roadClass).length;
   dbg('Road_Class coverage: '+rcTotal+' classified ('+rcCount+' non-local) of '+segs.length+' segs','STAGE');
+
+  const hasMesh = segs.length>0 && segs[0]._ch30_mesh !== undefined;
   const ch30Vals = segs.map(s=>hasMesh?(s._ch30_mesh||0):(s._ch30||0)).filter(v=>v>0);
   const li8Vals  = segs.map(s=>hasMesh?(s._li8_mesh||0):(s._li8||0)).filter(v=>v>0);
   const pct = (arr,p) => { const s=[...arr].sort((a,b)=>a-b); return s[Math.floor(s.length*p)]||0; };
@@ -4047,8 +4065,6 @@ function scoreM2(segs){
     const px   = Math.min(1, s._pxGrade || 0);
     const rc   = s._roadClass || null;
 
-    // Safety: Road_Class determines tier when present
-    // Class 07 (local streets) NEVER appear in Safety layer — only named corridors
     let safetySc;
     if(rc === '01' || rc === '02')      safetySc = 0.90 + Math.min(0.10, ch30*0.10);
     else if(rc === '04')                safetySc = 0.65 + Math.min(0.20, ch30*0.20);
