@@ -329,7 +329,7 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
     <div class="sb-eyebrow">Urban Mobility Analysis</div>
     <div class="sb-title">PWN Analyser</div>
     <div class="sb-sub">Priority Walking Network · Space Syntax + Trip Attractors</div>
-    <div class="sb-version" id="sb-version">v3.52 · downsample network display · no freeze on 101k features · 2026-09-22</div>
+    <div class="sb-version" id="sb-version">v3.52 · deferred render · network shows only on boundary draw · 2026-09-22</div>
   </div>
   <div class="sb-tabs">
     <button class="tab active" onclick="switchTab('data')">Data</button>
@@ -1973,12 +1973,31 @@ function applyBoundary(type, coordsLonLat){
   updateSteps();
   if(type==='study'){
     setTimeout(()=>{ previewSegmentCount(); updateBoundaryAreas(); }, 200);
-    // Show POI markers — filtered to buffer if context exists, otherwise skip
-    // (don't show citywide markers; wait for Step 3 to set the buffer)
-    if(atts.some(a=>a.data) && bounds.ctx){
-      buildPOIMarkers(true);
-    }
+    // Render the road network clipped to a buffer around the study area
+    // This is fast because it's a small geographic subset of the full network
+    renderNetworkForBoundary();
+    // Show POI markers — filtered to buffer if context exists
+    if(atts.some(a=>a.data) && bounds.ctx) buildPOIMarkers(true);
   }
+}
+
+function renderNetworkForBoundary(){
+  // Render only the roads within a ~2km buffer of the study boundary
+  // Runs fast because it's a small clip of the full 100k+ feature network
+  if(activeCity===null || !cities[activeCity] || !cities[activeCity].network) return;
+  if(!bounds.study || bounds.study.length<3) return;
+  if(netLayer){ map.removeLayer(netLayer); netLayer=null; }
+  try{
+    const ring=[...bounds.study, bounds.study[0]];
+    const poly = turf.polygon([ring]);
+    const buffered = turf.buffer(poly, 0.5, {units:'kilometers'}); // 500m visual buffer
+    const clipped = clipNet(cities[activeCity].network, buffered.geometry.coordinates[0].map(c=>[c[0],c[1]]));
+    if(clipped && clipped.features && clipped.features.length){
+      netLayer = L.geoJSON(clipped, {style:{color:'#888',weight:0.7,opacity:0.5}}).addTo(map);
+      netLayerVisible = true;
+      dbg('Network display: '+clipped.features.length+' features within boundary buffer','OK');
+    }
+  }catch(e){ dbg('Network display clip failed: '+e.message,'WARN'); }
 }
 
 function resetBoundary(type){
@@ -2184,18 +2203,16 @@ function loadCityFolder(input){
     const nz=document.getElementById('net-zone'); if(nz) nz.classList.add('loaded');
     const t=document.getElementById('net-t'); if(t){ t.textContent='✓ '+ct+' features loaded'; t.className='uz-t ok'; }
     const ns=document.getElementById('net-s'); if(ns) ns.textContent=netFile.name;
-    // Render a downsampled visual layer — only every Nth feature to avoid freezing
-    // the browser with 101k SVG paths. Full network is kept in cities[ci].network for analysis.
-    if(netLayer) map.removeLayer(netLayer);
-    const allFeats = gj.features || [];
-    const DISPLAY_MAX = 8000;
-    const step = allFeats.length > DISPLAY_MAX ? Math.ceil(allFeats.length / DISPLAY_MAX) : 1;
-    const displayFeats = step > 1 ? allFeats.filter((_,i) => i % step === 0) : allFeats;
-    const displayGJ = { type:'FeatureCollection', features: displayFeats };
-    netLayer = L.geoJSON(displayGJ, {style:{color:'#888',weight:0.7,opacity:0.4}}).addTo(map);
-    try{ map.fitBounds(netLayer.getBounds(),{padding:[30,30]}); }catch(ex){}
+    // Don't render the network on load — too slow for 100k features.
+    // Render only the clipped portion once the user draws a boundary.
+    if(netLayer){ map.removeLayer(netLayer); netLayer=null; }
+    // Pan to the data using a quick bbox from a sample of features
+    try{
+      const sample=(gj.features||[]).filter((_,i)=>i%200===0).slice(0,50);
+      if(sample.length) map.fitBounds(L.geoJSON({type:'FeatureCollection',features:sample}).getBounds(),{padding:[30,30]});
+    }catch(ex){}
     renderCities();
-    dbg('Network loaded: '+ct+' features (displaying '+displayFeats.length+')','OK');
+    dbg('Network loaded: '+ct+' features (render deferred until boundary drawn)','OK');
     done();
   });
 
@@ -2665,10 +2682,7 @@ function loadNetwork(input){
     document.getElementById('net-s').textContent=fname;
     if(netLayer)map.removeLayer(netLayer);
 
-    const _af=(gj.features||[]), _step=_af.length>8000?Math.ceil(_af.length/8000):1;
-    const _df=_step>1?_af.filter((_,i)=>i%_step===0):_af;
-    if(netLayer)map.removeLayer(netLayer);
-    netLayer=L.geoJSON({type:'FeatureCollection',features:_df},{style:{color:'#888',weight:0.7,opacity:0.4}}).addTo(map);
+    if(netLayer){ map.removeLayer(netLayer); netLayer=null; }
     netLayerVisible = true;
     try{map.fitBounds(netLayer.getBounds(),{padding:[30,30]});}catch(ex){}
     updateSteps();
