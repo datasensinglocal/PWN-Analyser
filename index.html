@@ -329,7 +329,7 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
     <div class="sb-eyebrow">Urban Mobility Analysis</div>
     <div class="sb-title">PWN Analyser</div>
     <div class="sb-sub">Priority Walking Network · Space Syntax + Trip Attractors</div>
-    <div class="sb-version" id="sb-version">v3.55 · 2.5km buffer · debug buffer clip · RC in clipNet · 2026-09-23</div>
+    <div class="sb-version" id="sb-version">v3.56 · segRoads RC diagnostic · 2026-09-23</div>
   </div>
   <div class="sb-tabs">
     <button class="tab active" onclick="switchTab('data')">Data</button>
@@ -3224,10 +3224,13 @@ function segRoads(net) {
   for(const f of (cleanNet.features||[])){
     if(f.geometry?.type === 'LineString' && f.geometry.coordinates.length >= 2){
       allCoords.push(f.geometry.coordinates);
-      // Store Road_Class alongside coordinates for later inheritance
       if(f.properties?.Road_Class) allCoords[allCoords.length-1]._roadClass = f.properties.Road_Class;
     }
   }
+  // Diagnostic: check Road_Class survival into segRoads
+  const rcInNet = (cleanNet.features||[]).filter(f=>f.properties?.Road_Class).length;
+  const rcInCoords = allCoords.filter(c=>c._roadClass).length;
+  dbg('segRoads: cleanNet features='+cleanNet.features.length+' withRC='+rcInNet+' | allCoords='+allCoords.length+' withRC='+rcInCoords,'STAGE');
 
   // ── Step 2: Find junction points ──
   // Count how many line endpoints share each snapped node
@@ -3344,6 +3347,9 @@ function segRoads(net) {
 
   console.log('Segmentation: '+rawSegs.length+' raw → '+chains.length+' chains → '+segs.length+' final segs');
   segs._segStats = { raw: rawSegs.length, chains: chains.length, final: segs.length };
+  const rcOnSegs = segs.filter(s=>s._roadClass).length;
+  const rcNonLocal = segs.filter(s=>s._roadClass && s._roadClass!=='07').length;
+  dbg('segRoads output: '+segs.length+' segs, withRC='+rcOnSegs+' nonLocal='+rcNonLocal,'STAGE');
   segs._cleanStats = cleanNet._cleanStats || null;
   return segs;
 }
