@@ -329,7 +329,7 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
     <div class="sb-eyebrow">Urban Mobility Analysis</div>
     <div class="sb-title">PWN Analyser</div>
     <div class="sb-sub">Priority Walking Network · Space Syntax + Trip Attractors</div>
-    <div class="sb-version" id="sb-version">v3.56 · segRoads RC diagnostic · 2026-09-23</div>
+    <div class="sb-version" id="sb-version">v3.57 · fix ALL spread/slice drops of _roadClass · 2026-09-23</div>
   </div>
   <div class="sb-tabs">
     <button class="tab active" onclick="switchTab('data')">Data</button>
@@ -2991,7 +2991,7 @@ function cleanNetwork(net) {
   // network fragmented, which collapses Choice/betweenness. Here we find each dangling
   // endpoint and, if it lies within ~15m of another segment's geometry, snap it onto that
   // segment and SPLIT the segment at that point so a shared node forms.
-  let nodedLines = finalLines.map(c => c.slice());
+  let nodedLines = finalLines.map(c => { const n=c.slice(); if(c._roadClass) n._roadClass=c._roadClass; return n; });
   const NODE_TOL_DEG = 0.000135;        // ~15m snapping tolerance
   const NODE_TOL_M   = 15;
 
@@ -3293,8 +3293,10 @@ function segRoads(net) {
         const jStart = coordKey(jc[0]) === tailKey;
         const oriented = jStart ? jc : [...jc].reverse();
         if(bearingDiff(lineBearing(chain), lineBearing(oriented)) <= COLLINEAR_THRESH){
+          const prevRC = chain._roadClass; // save before spread drops it
           chain = [...chain, ...oriented.slice(1)];
-          // Inherit highest-priority Road_Class (lowest number = highest class)
+          // Restore/inherit Road_Class — keep highest priority (lowest number)
+          chain._roadClass = prevRC; // restore first
           if(jc._roadClass && (!chain._roadClass || jc._roadClass < chain._roadClass))
             chain._roadClass = jc._roadClass;
           merged[j] = 1;
