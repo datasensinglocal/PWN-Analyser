@@ -329,7 +329,7 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
     <div class="sb-eyebrow">Urban Mobility Analysis</div>
     <div class="sb-title">PWN Analyser</div>
     <div class="sb-sub">Priority Walking Network · Space Syntax + Trip Attractors</div>
-    <div class="sb-version" id="sb-version">v3.59 · fix buffer topology · preserve coords in segRoadsSimple · 2026-09-23</div>
+    <div class="sb-version" id="sb-version">v3.60 · legend checkboxes for Safety·Access·Network · 2026-09-23</div>
   </div>
   <div class="sb-tabs">
     <button class="tab active" onclick="switchTab('data')">Data</button>
@@ -675,6 +675,7 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
       <button class="basemap-btn active-base" data-bm="voyager" onclick="switchBaseMap('voyager')" title="Carto Voyager">Voyager</button>
       <button class="basemap-btn" data-bm="carto_light" onclick="switchBaseMap('carto_light')" title="Carto Light">Light</button>
       <button class="basemap-btn" data-bm="carto_dark" onclick="switchBaseMap('carto_dark')" title="Carto Dark">Dark</button>
+      <button class="basemap-btn" data-bm="clean" onclick="switchBaseMap('clean')" title="Clean — no road lines">Clean</button>
     </div>
   </div>
   <div class="legend" id="legend">
@@ -687,28 +688,42 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
     <div class="leg-row" id="leg-corridor" style="display:none"><div class="leg-line" style="background:#c8a96e;border-top:2px dashed #c8a96e;height:0"></div>Attractor corridor (out-of-area pull)</div>
     <!-- Method 2 legend — shown only in diagnostic mode -->
     <div id="leg-m2" style="display:none">
-      <div class="leg-title" style="margin-top:6px">Street network</div>
-      <div style="display:flex;align-items:center;gap:6px;padding:2px 0">
-        <div style="width:20px;height:2px;background:#888;border-radius:1px;opacity:0.5"></div>
-        <span class="leg-label" style="font-size:10px;color:var(--text-secondary)">All streets — background</span>
+      <div class="leg-title" style="margin-top:6px">Visible layers</div>
+
+      <!-- Street network toggle -->
+      <div style="display:flex;align-items:center;gap:7px;padding:3px 0">
+        <input type="checkbox" id="leg-net-chk" style="cursor:pointer;accent-color:#888;width:13px;height:13px" onchange="toggleNetworkLayer()"/>
+        <div style="width:20px;height:2px;background:#888;border-radius:1px;opacity:0.6"></div>
+        <span class="leg-label" style="font-size:10px;color:var(--text-secondary)">Street network</span>
       </div>
-      <div class="leg-title" style="margin-top:6px">Safety corridors</div>
-      <div style="display:flex;align-items:center;gap:6px;padding:3px 0">
+
+      <!-- Safety toggle -->
+      <div style="display:flex;align-items:center;gap:7px;padding:3px 0">
+        <input type="checkbox" id="leg-safety-chk" checked style="cursor:pointer;accent-color:#c0392b;width:13px;height:13px" onchange="onSafetyToggle()"/>
         <div style="display:flex;gap:2px;align-items:center">
-          <div style="width:20px;height:7px;background:#c0392b;border-radius:1px"></div>
-          <div style="width:20px;height:4px;background:#c0392b;border-radius:1px"></div>
-          <div style="width:20px;height:2px;background:#c0392b;border-radius:1px"></div>
+          <div style="width:16px;height:6px;background:#c0392b;border-radius:1px"></div>
+          <div style="width:12px;height:3px;background:#c0392b;border-radius:1px"></div>
+          <div style="width:8px;height:1.5px;background:#c0392b;border-radius:1px"></div>
         </div>
-        <span class="leg-label" style="font-size:10px;color:var(--text-secondary)">Ch30 score → line weight</span>
+        <span class="leg-label" style="font-size:10px;color:var(--text-secondary)">Safety corridors</span>
       </div>
-      <div class="leg-title" style="margin-top:6px">Access corridors</div>
-      <div style="display:flex;align-items:center;gap:6px;padding:3px 0">
+
+      <!-- Access toggle -->
+      <div style="display:flex;align-items:center;gap:7px;padding:3px 0">
+        <input type="checkbox" id="leg-access-chk" checked style="cursor:pointer;accent-color:#185FA5;width:13px;height:13px" onchange="onAccessToggle()"/>
         <div style="display:flex;gap:2px;align-items:center">
-          <div style="width:20px;height:6px;background:#185FA5;border-radius:1px"></div>
-          <div style="width:20px;height:3px;background:#185FA5;border-radius:1px"></div>
-          <div style="width:20px;height:1.5px;background:#185FA5;border-radius:1px"></div>
+          <div style="width:16px;height:6px;background:#185FA5;border-radius:1px"></div>
+          <div style="width:12px;height:3px;background:#185FA5;border-radius:1px"></div>
+          <div style="width:8px;height:1.5px;background:#185FA5;border-radius:1px"></div>
         </div>
-        <span class="leg-label" style="font-size:10px;color:var(--text-secondary)">Integration × proximity → line weight</span>
+        <span class="leg-label" style="font-size:10px;color:var(--text-secondary)">Access corridors</span>
+      </div>
+
+      <!-- Attractor corridor -->
+      <div style="display:flex;align-items:center;gap:7px;padding:3px 0">
+        <div style="width:13px;height:13px"></div>
+        <div style="width:36px;height:2px;background:#c8a96e;border-radius:1px"></div>
+        <span class="leg-label" style="font-size:10px;color:var(--text-secondary)">Attractor corridor (out-of-area)</span>
       </div>
     </div>
     <div id="leg-score" style="display:none">
@@ -926,9 +941,12 @@ const baseMaps = {
   }),
   carto_dark: L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{
     attribution:'&copy; OpenStreetMap &copy; CARTO',maxZoom:19
+  }),
+  clean: L.tileLayer('https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png',{
+    attribution:'&copy; OpenStreetMap &copy; CARTO',maxZoom:19
   })
 };
-let activeBase = baseMaps.voyager;  // CartoDB works from file://
+let activeBase = baseMaps.voyager;
 activeBase.addTo(map);
 
 function switchBaseMap(name) {
@@ -2852,16 +2870,36 @@ function renderStep1VisToggles(){
   list.innerHTML = html;
 }
 
+function onSafetyToggle(){
+  // Sync legend checkbox with sidebar checkbox
+  const legChk = document.getElementById('leg-safety-chk');
+  const sideChk = document.getElementById('m2-safety');
+  const val = legChk ? legChk.checked : true;
+  if(sideChk) sideChk.checked = val;
+  if(legChk) legChk.checked = val;
+  renderM2Layers();
+}
+function onAccessToggle(){
+  const legChk = document.getElementById('leg-access-chk');
+  const sideChk = document.getElementById('m2-access');
+  const val = legChk ? legChk.checked : true;
+  if(sideChk) sideChk.checked = val;
+  if(legChk) legChk.checked = val;
+  renderM2Layers();
+}
+
 let netLayerVisible = true;
 function toggleNetworkLayer(){
   netLayerVisible = !netLayerVisible;
   if(typeof netLayer!=='undefined' && netLayer){
     netLayerVisible ? map.addLayer(netLayer) : map.removeLayer(netLayer);
   }
-  // Also toggle the grey base network layer shown after analysis
   if(typeof m2BaseLayer!=='undefined' && m2BaseLayer){
     netLayerVisible ? map.addLayer(m2BaseLayer) : map.removeLayer(m2BaseLayer);
   }
+  // Sync legend checkbox
+  const legChk = document.getElementById('leg-net-chk');
+  if(legChk) legChk.checked = netLayerVisible;
   renderStep1VisToggles();
 }
 
@@ -4151,13 +4189,9 @@ function renderM2Layers(){
   // Minimum 2px so all classified roads are visible
   const scoreToWeight = (score, maxW) => Math.max(2, Math.pow(score, 1.5) * maxW);
 
-  // ── Base layer — grey background for ALL study segments (priority network context) ──
-  const baseSegs = segments.filter(s => s.geometry);
-  if(baseSegs.length){
-    m2BaseLayer = L.geoJSON({type:'FeatureCollection',features:baseSegs},{
-      style: ()=>({ color:'#666', weight:0.5, opacity:0.2, lineCap:'round', lineJoin:'round' })
-    }).addTo(map);
-  }
+  // No base network overlay — OSM/Voyager basemap already shows street context
+  // The Safety (red) and Access (blue) layers are the only analysis output shown
+  m2BaseLayer = null;
 
   // Safety layer — RED, weight from Road_Class tier score
   const safetySegs = segments.filter(s => (s._m2sSc||0) >= t.chMin && s.geometry);
@@ -4200,12 +4234,12 @@ function renderM2Layers(){
 
   const legM2 = document.getElementById('leg-m2');
   if(legM2) legM2.style.display = 'block';
-  // Hide uploaded road network layer — grey base layer replaces it
+  // Hide the base network after analysis — Safety/Access + OSM basemap is enough
   if(typeof netLayer!=='undefined' && netLayer && map.hasLayer(netLayer)){
     map.removeLayer(netLayer);
-    netLayerVisible = false;
-    renderStep1VisToggles();
   }
+  netLayerVisible = false;
+  if(typeof renderStep1VisToggles==='function') renderStep1VisToggles();
   // Bring analysis layers above base and POI markers
   if(m2SafetyLayer) m2SafetyLayer.bringToFront();
   if(m2AccessLayer) m2AccessLayer.bringToFront();
