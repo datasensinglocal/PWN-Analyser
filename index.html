@@ -329,7 +329,7 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
     <div class="sb-eyebrow">Urban Mobility Analysis</div>
     <div class="sb-title">PWN Analyser</div>
     <div class="sb-sub">Priority Walking Network · Space Syntax + Trip Attractors</div>
-    <div class="sb-version" id="sb-version">v3.64 · verified clean · 2026-09-23</div>
+    <div class="sb-version" id="sb-version">v3.64 · deep verified · balanced HTML · null-guarded · 2026-09-23</div>
   </div>
   <div class="sb-tabs">
     <button class="tab active" onclick="switchTab('data')">Data</button>
@@ -530,7 +530,6 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
             </div>
 
             <!-- Multi-neighbourhood panel (shown when tiles exist) -->
-            </div>
 
               <!-- Format + download -->
               <div style="display:flex;gap:5px;align-items:center;margin-bottom:5px">
@@ -627,7 +626,6 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
         <div id="poi-toggle-list" style="margin-top:4px"></div>
       </div>
     </div>
-  </div>
 
   <div class="stats-footer" id="stats-footer">
     <div class="stats-inner">
@@ -638,7 +636,6 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
       <div class="stat"><div class="stat-val" id="st" style="color:#555">0</div><div class="stat-lbl">Segs</div></div>
     </div>
   </div>
-</div>
 
 <div id="map-panel">
   <div id="map"></div>
@@ -1186,7 +1183,7 @@ function renderSavedBoundsList(){
     sel.appendChild(o);
   });
   if(cur && b[cur]) sel.value=cur;
-  document.getElementById('saved-bounds-group').style.display = keys.length ? 'block' : 'none';
+  const _sbg=document.getElementById('saved-bounds-group'); if(_sbg) _sbg.style.display = keys.length ? 'block' : 'none';
 }
 
 function saveBoundary(type){
@@ -3372,6 +3369,12 @@ function clearAreaWarning(){
 function angCost(bA,bB){
   let d=Math.abs(bA-bB);if(d>180)d=360-d;return d/180;
 }
+// bearing(seg) — returns axial bearing of a segment (used by buildGraph)
+function bearing(seg){
+  if(!seg||!seg.geometry||!seg.geometry.coordinates) return 0;
+  return lineBearing(seg.geometry.coordinates);
+}
+
 function buildGraph(segs){
   const SNAP1=0.00008,SNAP2=0.00030,nmap1={},nmap2={};
   const key1=c=>Math.round(c[0]/SNAP1)+','+Math.round(c[1]/SNAP1);
@@ -4053,7 +4056,7 @@ function buildConnectors(segs,graph){
     style:()=>({color:'#00e0c0',weight:5,opacity:.95,dashArray:'10,5'})
   }).addTo(map);
   if(connLayer.bringToFront) connLayer.bringToFront();
-  document.getElementById('leg-conn').style.display='flex';
+  const _lc2=document.getElementById('leg-conn'); if(_lc2) _lc2.style.display='flex';
   showToast(connSegs.length+' gap-closing segments identified');
   const stG=document.getElementById('status-5');
   if(stG){ stG.textContent=connSegs.length+' gap-closing roads identified'; stG.className='step-status'; }
@@ -4076,7 +4079,7 @@ function toggleConnectors(){
     if(btn){ btn.textContent='✓ Gap Closers Shown — click to hide'; btn.style.background='#00e0c0'; btn.style.color='#04201c'; }
   }else{
     if(connLayer){map.removeLayer(connLayer);connLayer=null;}
-    document.getElementById('leg-conn').style.display='none';
+    const _lc1=document.getElementById('leg-conn'); if(_lc1) _lc1.style.display='none';
     if(btn){ btn.textContent='⟿ Identify Gap Closers'; btn.style.background='#0d2e2a'; btn.style.color='#00e0c0'; }
     const stG=document.getElementById('status-5'); if(stG){ stG.textContent='Gap closers hidden'; stG.className='step-status pending'; }
   }
@@ -4367,7 +4370,7 @@ function showScoreLayer(which){
   if(activeScoreLayer === which){
     activeScoreLayer = null;
     document.querySelectorAll('[id^="sl-"]').forEach(el=>el.classList.remove('on'));
-    document.getElementById('sl-stats').style.display='none';
+    const _slS=document.getElementById('sl-stats'); if(_slS) _slS.style.display='none';
     renderSegs(segments); // back to final PWN
     restorePOIMarkers();   // bring icons back
     setLegendMode('final');
@@ -4431,7 +4434,7 @@ function showScoreLayer(which){
     if(typeof dbg==='function') dbg('Score layer "'+which+'" drawn: '+drawn+' segments'+(stretch?' (stretched to fabric)':''),'OK');
   }
   const box = document.getElementById('sl-stats');
-  box.style.display='block';
+  if(box) box.style.display='block';
   let body;
   if(which==='final'){
     body = 'Coloured by PWN tier';
@@ -4801,7 +4804,7 @@ function buildCorridors(){
     }
   }).addTo(map);
   corridorsOn=true;
-  document.getElementById('leg-corridor').style.display='flex';
+  const _lcorr=document.getElementById('leg-corridor'); if(_lcorr) _lcorr.style.display='flex';
 }
 
 /* ════════════════════════════════════════════════
