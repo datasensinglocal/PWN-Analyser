@@ -329,7 +329,7 @@ input[type=range]{width:100%;accent-color:#c8a96e;cursor:pointer}
     <div class="sb-eyebrow">Urban Mobility Analysis</div>
     <div class="sb-title">PWN Analyser</div>
     <div class="sb-sub">Priority Walking Network · Space Syntax + Trip Attractors</div>
-    <div class="sb-version" id="sb-version">v3.60 · legend checkboxes for Safety·Access·Network · 2026-09-23</div>
+    <div class="sb-version" id="sb-version">v3.61 · clear segLayer on render · fix Clean basemap URL · 2026-09-23</div>
   </div>
   <div class="sb-tabs">
     <button class="tab active" onclick="switchTab('data')">Data</button>
@@ -942,7 +942,7 @@ const baseMaps = {
   carto_dark: L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{
     attribution:'&copy; OpenStreetMap &copy; CARTO',maxZoom:19
   }),
-  clean: L.tileLayer('https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png',{
+  clean: L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/light_nolabels/{z}/{x}/{y}{r}.png',{
     attribution:'&copy; OpenStreetMap &copy; CARTO',maxZoom:19
   })
 };
@@ -4145,6 +4145,9 @@ function clearM2Layers(){
   if(m2SafetyLayer){ map.removeLayer(m2SafetyLayer); m2SafetyLayer=null; }
   if(m2AccessLayer){ map.removeLayer(m2AccessLayer); m2AccessLayer=null; }
   if(m2JunctionLayer){ map.removeLayer(m2JunctionLayer); m2JunctionLayer=null; }
+  // Also clear the animated reveal layer which may be left from per-tile animation
+  if(typeof segLayer!=='undefined' && segLayer){ map.removeLayer(segLayer); segLayer=null; }
+  if(typeof connLayer!=='undefined' && connLayer){ map.removeLayer(connLayer); connLayer=null; }
 }
 
 // Build junction node points from the graph (intersections where degree ≥ 2)
@@ -4211,14 +4214,13 @@ function renderM2Layers(){
     }).addTo(map);
   }
 
-  // Access layer — BLUE, weight from Integration × proximity
-  const accessMax = Math.max(1 + t.proxBoost, 1);
-  const coreAccessSegs   = segments.filter(s => (s._m2aSc||0) >= t.liMin && s.geometry);
-  const bufferAccessSegs = bufferCorrSegs.filter(s => (s._m2aSc||0) >= t.liMin && s.geometry);
-  const allAccessSegs    = [...coreAccessSegs, ...bufferAccessSegs];
-  // Store scores in properties so Leaflet style fn can read them
-  allAccessSegs.forEach(s=>{ s.properties = s.properties||{}; s.properties._m2aSc = s._m2aSc||0; s.properties._inStudy = s._inStudy; });
+  // Access layer — BLUE — core study segments only
+  // Buffer segments with attractor pull shown separately as attractor corridors
+  const coreAccessSegs = segments.filter(s => (s._m2aSc||0) >= t.liMin && s.geometry);
+  const allAccessSegs  = coreAccessSegs;  // buffer corridors shown separately via attractor layer
+  allAccessSegs.forEach(s=>{ s.properties=s.properties||{}; s.properties._m2aSc=s._m2aSc||0; s.properties._inStudy=s._inStudy; });
   dbg('Access segs with geometry: '+allAccessSegs.length,'STAGE');
+  const accessMax = Math.max(1 + t.proxBoost, 1);
   if(allAccessSegs.length && showAccess){
     m2AccessLayer = L.geoJSON({type:'FeatureCollection',features:allAccessSegs},{
       style: f => ({
